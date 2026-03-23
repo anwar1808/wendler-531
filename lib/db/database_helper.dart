@@ -22,8 +22,9 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -51,11 +52,19 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cycle_id INTEGER NOT NULL,
         week INTEGER NOT NULL,
-        session_type TEXT NOT NULL,
+        lifts TEXT NOT NULL DEFAULT '',
         date TEXT NOT NULL,
         notes TEXT NOT NULL DEFAULT '',
         is_complete INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (cycle_id) REFERENCES cycles (id)
+      )
+    ''');
+
+    // Per-lift week tracking: which week each lift is on
+    await db.execute('''
+      CREATE TABLE lift_week (
+        lift TEXT PRIMARY KEY,
+        week INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -86,6 +95,232 @@ class DatabaseHelper {
         is_imported INTEGER NOT NULL DEFAULT 0
       )
     ''');
+
+    await _seedHistoricalData(db);
+  }
+
+  Future<void> _seedHistoricalData(Database db) async {
+    // Check if history_entries is empty (first launch guard)
+    final countResult = await db.rawQuery('SELECT COUNT(*) as cnt FROM history_entries');
+    final count = countResult.first['cnt'] as int;
+    if (count > 0) return;
+
+    final today = DateTime.now();
+    final todayStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+    // All historical entries. Fields: date (yyyy-MM-dd), lift, weightKg, reps, oneRm, notes
+    final entries = <Map<String, dynamic>>[
+      {'date': '2024-09-25', 'lift': 'benchPress', 'weight_kg': 57.5, 'reps': 15, 'one_rm': 86.0, 'notes': ''},
+      {'date': '2024-09-22', 'lift': 'deadlift', 'weight_kg': 85.0, 'reps': 5, 'one_rm': 99.0, 'notes': 'Reduce by 10kg next cycle'},
+      {'date': '2024-09-18', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 11, 'one_rm': 48.0, 'notes': 'Lower max weight probably by 5'},
+      {'date': '2024-09-17', 'lift': 'benchPress', 'weight_kg': 55.0, 'reps': 12, 'one_rm': 77.0, 'notes': ''},
+      {'date': '2024-07-14', 'lift': 'deadlift', 'weight_kg': 100.0, 'reps': 6, 'one_rm': 120.0, 'notes': ''},
+      {'date': '2024-07-10', 'lift': 'militaryPress', 'weight_kg': 40.0, 'reps': 10, 'one_rm': 53.0, 'notes': ''},
+      {'date': '2024-06-29', 'lift': 'benchPress', 'weight_kg': 65.0, 'reps': 4, 'one_rm': 74.0, 'notes': 'Fly machine (50) x 6 reps x 3 sets'},
+      {'date': '2024-06-06', 'lift': 'benchPress', 'weight_kg': 70.0, 'reps': 2, 'one_rm': 75.0, 'notes': ''},
+      {'date': '2024-05-21', 'lift': 'deadlift', 'weight_kg': 100.0, 'reps': 4, 'one_rm': 113.0, 'notes': ''},
+      {'date': '2024-05-20', 'lift': 'benchPress', 'weight_kg': 65.0, 'reps': 5, 'one_rm': 76.0, 'notes': 'Fly machine (50) x 6 reps x 3 sets'},
+      {'date': '2024-04-30', 'lift': 'deadlift', 'weight_kg': 90.0, 'reps': 8, 'one_rm': 114.0, 'notes': ''},
+      {'date': '2024-04-25', 'lift': 'benchPress', 'weight_kg': 62.5, 'reps': 8, 'one_rm': 79.0, 'notes': 'Fly machine (50) x 6 reps x 3 sets'},
+      {'date': '2024-04-23', 'lift': 'militaryPress', 'weight_kg': 37.5, 'reps': 5, 'one_rm': 44.0, 'notes': ''},
+      {'date': '2024-04-22', 'lift': 'deadlift', 'weight_kg': 85.0, 'reps': 10, 'one_rm': 113.0, 'notes': ''},
+      {'date': '2024-04-17', 'lift': 'benchPress', 'weight_kg': 60.0, 'reps': 7, 'one_rm': 74.0, 'notes': ''},
+      {'date': '2024-02-18', 'lift': 'militaryPress', 'weight_kg': 50.0, 'reps': 1, 'one_rm': 50.0, 'notes': ''},
+      {'date': '2024-02-16', 'lift': 'deadlift', 'weight_kg': 100.0, 'reps': 3, 'one_rm': 110.0, 'notes': ''},
+      {'date': '2024-02-12', 'lift': 'benchPress', 'weight_kg': 72.5, 'reps': 1, 'one_rm': 73.0, 'notes': 'Fly machine (50) x 6 reps x 3 sets'},
+      {'date': '2024-02-05', 'lift': 'militaryPress', 'weight_kg': 47.5, 'reps': 2, 'one_rm': 51.0, 'notes': ''},
+      {'date': '2024-02-04', 'lift': 'deadlift', 'weight_kg': 92.5, 'reps': 3, 'one_rm': 102.0, 'notes': ''},
+      {'date': '2024-02-03', 'lift': 'benchPress', 'weight_kg': 70.0, 'reps': 3, 'one_rm': 77.0, 'notes': 'Fly machine (50) x 6 reps x 3 sets'},
+      {'date': '2024-01-16', 'lift': 'deadlift', 'weight_kg': 90.0, 'reps': 6, 'one_rm': 108.0, 'notes': ''},
+      {'date': '2024-01-12', 'lift': 'benchPress', 'weight_kg': 67.5, 'reps': 5, 'one_rm': 79.0, 'notes': ''},
+      {'date': '2023-12-13', 'lift': 'militaryPress', 'weight_kg': 50.0, 'reps': 2, 'one_rm': 53.0, 'notes': ''},
+      {'date': '2023-12-11', 'lift': 'deadlift', 'weight_kg': 95.0, 'reps': 4, 'one_rm': 108.0, 'notes': ''},
+      {'date': '2023-12-08', 'lift': 'benchPress', 'weight_kg': 75.0, 'reps': 1, 'one_rm': 75.0, 'notes': ''},
+      {'date': '2023-12-07', 'lift': 'deadlift', 'weight_kg': 90.0, 'reps': 5, 'one_rm': 105.0, 'notes': ''},
+      {'date': '2023-12-03', 'lift': 'deadlift', 'weight_kg': 72.5, 'reps': 7, 'one_rm': 89.0, 'notes': ''},
+      {'date': '2023-11-27', 'lift': 'benchPress', 'weight_kg': 70.0, 'reps': 3, 'one_rm': 77.0, 'notes': 'Pectoral Flys machine (50) x 6 reps x 3 sets'},
+      {'date': '2023-11-23', 'lift': 'militaryPress', 'weight_kg': 45.0, 'reps': 4, 'one_rm': 51.0, 'notes': ''},
+      {'date': '2023-11-19', 'lift': 'militaryPress', 'weight_kg': 42.5, 'reps': 4, 'one_rm': 48.0, 'notes': ''},
+      {'date': '2023-11-18', 'lift': 'benchPress', 'weight_kg': 65.0, 'reps': 4, 'one_rm': 74.0, 'notes': ''},
+      {'date': '2023-11-17', 'lift': 'deadlift', 'weight_kg': 77.5, 'reps': 10, 'one_rm': 103.0, 'notes': ''},
+      {'date': '2023-11-15', 'lift': 'militaryPress', 'weight_kg': 45.0, 'reps': 2, 'one_rm': 48.0, 'notes': ''},
+      {'date': '2023-11-14', 'lift': 'benchPress', 'weight_kg': 67.5, 'reps': 4, 'one_rm': 77.0, 'notes': ''},
+      {'date': '2023-10-18', 'lift': 'militaryPress', 'weight_kg': 45.0, 'reps': 2, 'one_rm': 48.0, 'notes': ''},
+      {'date': '2023-10-18', 'lift': 'deadlift', 'weight_kg': 72.5, 'reps': 6, 'one_rm': 87.0, 'notes': ''},
+      {'date': '2023-10-17', 'lift': 'backSquat', 'weight_kg': 65.0, 'reps': 5, 'one_rm': 76.0, 'notes': ''},
+      {'date': '2023-10-17', 'lift': 'benchPress', 'weight_kg': 65.0, 'reps': 5, 'one_rm': 76.0, 'notes': ''},
+      {'date': '2023-10-09', 'lift': 'militaryPress', 'weight_kg': 40.0, 'reps': 7, 'one_rm': 49.0, 'notes': ''},
+      {'date': '2023-10-08', 'lift': 'deadlift', 'weight_kg': 70.0, 'reps': 5, 'one_rm': 82.0, 'notes': ''},
+      {'date': '2023-10-05', 'lift': 'militaryPress', 'weight_kg': 45.0, 'reps': 2, 'one_rm': 48.0, 'notes': ''},
+      {'date': '2023-10-03', 'lift': 'benchPress', 'weight_kg': 60.0, 'reps': 5, 'one_rm': 70.0, 'notes': ''},
+      {'date': '2023-10-02', 'lift': 'militaryPress', 'weight_kg': 42.5, 'reps': 2, 'one_rm': 45.0, 'notes': ''},
+      {'date': '2023-09-16', 'lift': 'benchPress', 'weight_kg': 55.0, 'reps': 9, 'one_rm': 72.0, 'notes': 'Next one increase max load to 60kg'},
+      {'date': '2023-09-11', 'lift': 'militaryPress', 'weight_kg': 40.0, 'reps': 1, 'one_rm': 40.0, 'notes': ''},
+      {'date': '2023-09-08', 'lift': 'benchPress', 'weight_kg': 52.5, 'reps': 11, 'one_rm': 72.0, 'notes': ''},
+      {'date': '2023-09-07', 'lift': 'militaryPress', 'weight_kg': 42.5, 'reps': 1, 'one_rm': 43.0, 'notes': ''},
+      {'date': '2023-08-21', 'lift': 'benchPress', 'weight_kg': 50.0, 'reps': 12, 'one_rm': 70.0, 'notes': ''},
+      {'date': '2023-08-10', 'lift': 'benchPress', 'weight_kg': 50.0, 'reps': 10, 'one_rm': 67.0, 'notes': ''},
+      {'date': '2023-08-09', 'lift': 'militaryPress', 'weight_kg': 40.0, 'reps': 2, 'one_rm': 43.0, 'notes': ''},
+      {'date': '2023-08-04', 'lift': 'benchPress', 'weight_kg': 45.0, 'reps': 12, 'one_rm': 63.0, 'notes': ''},
+      {'date': '2023-08-02', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 5, 'one_rm': 41.0, 'notes': ''},
+      {'date': '2023-07-31', 'lift': 'benchPress', 'weight_kg': 40.0, 'reps': 14, 'one_rm': 59.0, 'notes': ''},
+      {'date': '2023-07-28', 'lift': 'benchPress', 'weight_kg': 42.5, 'reps': 13, 'one_rm': 61.0, 'notes': ''},
+      {'date': '2023-07-22', 'lift': 'benchPress', 'weight_kg': 40.0, 'reps': 12, 'one_rm': 56.0, 'notes': ''},
+      {'date': '2023-07-21', 'lift': 'militaryPress', 'weight_kg': 32.5, 'reps': 4, 'one_rm': 37.0, 'notes': ''},
+      {'date': '2023-07-17', 'lift': 'militaryPress', 'weight_kg': 30.0, 'reps': 6, 'one_rm': 36.0, 'notes': ''},
+      {'date': '2023-07-12', 'lift': 'militaryPress', 'weight_kg': 22.5, 'reps': 10, 'one_rm': 30.0, 'notes': ''},
+      {'date': '2023-07-12', 'lift': 'benchPress', 'weight_kg': 37.5, 'reps': 10, 'one_rm': 50.0, 'notes': ''},
+      {'date': '2023-03-03', 'lift': 'benchPress', 'weight_kg': 50.0, 'reps': 4, 'one_rm': 57.0, 'notes': ''},
+      {'date': '2022-12-20', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 5, 'one_rm': 41.0, 'notes': ''},
+      {'date': '2022-11-13', 'lift': 'militaryPress', 'weight_kg': 32.5, 'reps': 4, 'one_rm': 37.0, 'notes': ''},
+      {'date': '2022-10-08', 'lift': 'deadlift', 'weight_kg': 70.0, 'reps': 5, 'one_rm': 82.0, 'notes': ''},
+      {'date': '2022-10-08', 'lift': 'benchPress', 'weight_kg': 52.5, 'reps': 5, 'one_rm': 61.0, 'notes': ''},
+      {'date': '2022-10-06', 'lift': 'backSquat', 'weight_kg': 70.0, 'reps': 3, 'one_rm': 77.0, 'notes': ''},
+      {'date': '2022-10-02', 'lift': 'benchPress', 'weight_kg': 50.0, 'reps': 5, 'one_rm': 58.0, 'notes': ''},
+      {'date': '2022-09-30', 'lift': 'militaryPress', 'weight_kg': 30.0, 'reps': 16, 'one_rm': 46.0, 'notes': ''},
+      {'date': '2022-05-09', 'lift': 'benchPress', 'weight_kg': 60.0, 'reps': 5, 'one_rm': 70.0, 'notes': ''},
+      {'date': '2022-05-09', 'lift': 'deadlift', 'weight_kg': 80.0, 'reps': 8, 'one_rm': 101.0, 'notes': ''},
+      {'date': '2022-04-28', 'lift': 'backSquat', 'weight_kg': 77.5, 'reps': 6, 'one_rm': 93.0, 'notes': ''},
+      {'date': '2022-04-16', 'lift': 'militaryPress', 'weight_kg': 40.0, 'reps': 4, 'one_rm': 45.0, 'notes': ''},
+      {'date': '2022-04-12', 'lift': 'deadlift', 'weight_kg': 90.0, 'reps': 1, 'one_rm': 90.0, 'notes': ''},
+      {'date': '2022-03-31', 'lift': 'backSquat', 'weight_kg': 70.0, 'reps': 9, 'one_rm': 91.0, 'notes': ''},
+      {'date': '2022-03-31', 'lift': 'benchPress', 'weight_kg': 57.5, 'reps': 4, 'one_rm': 65.0, 'notes': ''},
+      {'date': '2022-03-22', 'lift': 'militaryPress', 'weight_kg': 40.0, 'reps': 3, 'one_rm': 44.0, 'notes': ''},
+      {'date': '2022-03-16', 'lift': 'benchPress', 'weight_kg': 55.0, 'reps': 5, 'one_rm': 64.0, 'notes': ''},
+      {'date': '2022-03-16', 'lift': 'deadlift', 'weight_kg': 77.5, 'reps': 6, 'one_rm': 93.0, 'notes': ''},
+      {'date': '2022-03-13', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 5, 'one_rm': 41.0, 'notes': ''},
+      {'date': '2022-03-13', 'lift': 'backSquat', 'weight_kg': 65.0, 'reps': 11, 'one_rm': 89.0, 'notes': ''},
+      {'date': '2022-02-23', 'lift': 'benchPress', 'weight_kg': 55.0, 'reps': 8, 'one_rm': 70.0, 'notes': ''},
+      {'date': '2022-02-23', 'lift': 'deadlift', 'weight_kg': 65.0, 'reps': 10, 'one_rm': 87.0, 'notes': ''},
+      {'date': '2022-02-17', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 7, 'one_rm': 43.0, 'notes': ''},
+      {'date': '2022-02-17', 'lift': 'backSquat', 'weight_kg': 65.0, 'reps': 10, 'one_rm': 87.0, 'notes': ''},
+      {'date': '2022-02-15', 'lift': 'benchPress', 'weight_kg': 50.0, 'reps': 6, 'one_rm': 60.0, 'notes': ''},
+      {'date': '2022-02-15', 'lift': 'deadlift', 'weight_kg': 60.0, 'reps': 8, 'one_rm': 76.0, 'notes': ''},
+      {'date': '2022-02-09', 'lift': 'militaryPress', 'weight_kg': 32.5, 'reps': 9, 'one_rm': 42.0, 'notes': ''},
+      {'date': '2022-02-09', 'lift': 'backSquat', 'weight_kg': 52.5, 'reps': 10, 'one_rm': 70.0, 'notes': ''},
+      {'date': '2022-02-03', 'lift': 'militaryPress', 'weight_kg': 27.5, 'reps': 7, 'one_rm': 34.0, 'notes': ''},
+      {'date': '2022-02-03', 'lift': 'deadlift', 'weight_kg': 42.5, 'reps': 12, 'one_rm': 59.0, 'notes': ''},
+      {'date': '2022-02-02', 'lift': 'backSquat', 'weight_kg': 37.5, 'reps': 20, 'one_rm': 62.0, 'notes': ''},
+      {'date': '2022-02-02', 'lift': 'benchPress', 'weight_kg': 45.0, 'reps': 10, 'one_rm': 60.0, 'notes': ''},
+      {'date': '2019-02-23', 'lift': 'backSquat', 'weight_kg': 80.0, 'reps': 2, 'one_rm': 85.0, 'notes': ''},
+      {'date': '2019-02-23', 'lift': 'deadlift', 'weight_kg': 90.0, 'reps': 3, 'one_rm': 99.0, 'notes': ''},
+      {'date': '2019-01-24', 'lift': 'benchPress', 'weight_kg': 60.0, 'reps': 3, 'one_rm': 66.0, 'notes': ''},
+      {'date': '2019-01-03', 'lift': 'militaryPress', 'weight_kg': 37.5, 'reps': 2, 'one_rm': 40.0, 'notes': ''},
+      {'date': '2018-12-27', 'lift': 'benchPress', 'weight_kg': 57.5, 'reps': 4, 'one_rm': 65.0, 'notes': ''},
+      {'date': '2018-12-23', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 3, 'one_rm': 39.0, 'notes': ''},
+      {'date': '2018-12-15', 'lift': 'backSquat', 'weight_kg': 77.5, 'reps': 3, 'one_rm': 85.0, 'notes': ''},
+      {'date': '2018-12-15', 'lift': 'deadlift', 'weight_kg': 85.0, 'reps': 5, 'one_rm': 99.0, 'notes': ''},
+      {'date': '2018-12-14', 'lift': 'benchPress', 'weight_kg': 50.0, 'reps': 8, 'one_rm': 63.0, 'notes': ''},
+      {'date': '2018-12-11', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 3, 'one_rm': 39.0, 'notes': ''},
+      {'date': '2018-11-06', 'lift': 'backSquat', 'weight_kg': 77.5, 'reps': 3, 'one_rm': 85.0, 'notes': ''},
+      {'date': '2018-11-06', 'lift': 'benchPress', 'weight_kg': 55.0, 'reps': 3, 'one_rm': 61.0, 'notes': ''},
+      {'date': '2018-10-26', 'lift': 'militaryPress', 'weight_kg': 37.5, 'reps': 1, 'one_rm': 38.0, 'notes': ''},
+      {'date': '2018-10-26', 'lift': 'deadlift', 'weight_kg': 85.0, 'reps': 5, 'one_rm': 99.0, 'notes': ''},
+      {'date': '2018-09-26', 'lift': 'benchPress', 'weight_kg': 50.0, 'reps': 6, 'one_rm': 60.0, 'notes': ''},
+      {'date': '2018-09-26', 'lift': 'deadlift', 'weight_kg': 80.0, 'reps': 6, 'one_rm': 96.0, 'notes': ''},
+      {'date': '2018-09-19', 'lift': 'militaryPress', 'weight_kg': 35.0, 'reps': 4, 'one_rm': 40.0, 'notes': ''},
+      {'date': '2018-09-19', 'lift': 'backSquat', 'weight_kg': 72.5, 'reps': 5, 'one_rm': 85.0, 'notes': ''},
+      {'date': '2018-09-14', 'lift': 'benchPress', 'weight_kg': 45.0, 'reps': 8, 'one_rm': 57.0, 'notes': ''},
+      {'date': '2018-09-14', 'lift': 'deadlift', 'weight_kg': 75.0, 'reps': 6, 'one_rm': 90.0, 'notes': ''},
+      {'date': '2018-08-31', 'lift': 'militaryPress', 'weight_kg': 30.0, 'reps': 8, 'one_rm': 38.0, 'notes': ''},
+      {'date': '2018-08-31', 'lift': 'backSquat', 'weight_kg': 67.5, 'reps': 7, 'one_rm': 83.0, 'notes': ''},
+      {'date': '2018-08-10', 'lift': 'deadlift', 'weight_kg': 75.0, 'reps': 5, 'one_rm': 88.0, 'notes': ''},
+      {'date': '2018-08-10', 'lift': 'benchPress', 'weight_kg': 45.0, 'reps': 4, 'one_rm': 51.0, 'notes': ''},
+      {'date': '2018-08-03', 'lift': 'militaryPress', 'weight_kg': 32.5, 'reps': 4, 'one_rm': 37.0, 'notes': ''},
+      {'date': '2018-08-03', 'lift': 'backSquat', 'weight_kg': 70.0, 'reps': 5, 'one_rm': 82.0, 'notes': ''},
+      {'date': '2018-08-01', 'lift': 'deadlift', 'weight_kg': 70.0, 'reps': 7, 'one_rm': 86.0, 'notes': ''},
+      {'date': '2018-08-01', 'lift': 'benchPress', 'weight_kg': 40.0, 'reps': 7, 'one_rm': 49.0, 'notes': ''},
+      {'date': '2018-07-28', 'lift': 'militaryPress', 'weight_kg': 30.0, 'reps': 5, 'one_rm': 35.0, 'notes': ''},
+      {'date': '2018-07-28', 'lift': 'backSquat', 'weight_kg': 62.5, 'reps': 8, 'one_rm': 79.0, 'notes': ''},
+      {'date': '2018-07-27', 'lift': 'deadlift', 'weight_kg': 57.5, 'reps': 14, 'one_rm': 84.0, 'notes': ''},
+      {'date': '2018-07-27', 'lift': 'benchPress', 'weight_kg': 32.5, 'reps': 14, 'one_rm': 48.0, 'notes': ''},
+      {'date': '2018-07-20', 'lift': 'militaryPress', 'weight_kg': 25.0, 'reps': 11, 'one_rm': 34.0, 'notes': ''},
+      {'date': '2018-07-20', 'lift': 'backSquat', 'weight_kg': 57.5, 'reps': 10, 'one_rm': 77.0, 'notes': ''},
+      {'date': '2018-07-11', 'lift': 'deadlift', 'weight_kg': 60.0, 'reps': 10, 'one_rm': 80.0, 'notes': ''},
+      {'date': '2018-07-11', 'lift': 'backSquat', 'weight_kg': 60.0, 'reps': 6, 'one_rm': 72.0, 'notes': ''},
+      {'date': '2018-07-08', 'lift': 'benchPress', 'weight_kg': 34.0, 'reps': 11, 'one_rm': 46.0, 'notes': ''},
+      {'date': '2018-07-06', 'lift': 'backSquat', 'weight_kg': 57.0, 'reps': 5, 'one_rm': 67.0, 'notes': ''},
+      {'date': '2018-07-06', 'lift': 'militaryPress', 'weight_kg': 26.0, 'reps': 8, 'one_rm': 33.0, 'notes': ''},
+      {'date': '2018-07-03', 'lift': 'deadlift', 'weight_kg': 57.0, 'reps': 10, 'one_rm': 76.0, 'notes': ''},
+      {'date': '2018-07-03', 'lift': 'benchPress', 'weight_kg': 32.0, 'reps': 12, 'one_rm': 45.0, 'notes': ''},
+      {'date': '2018-06-27', 'lift': 'deadlift', 'weight_kg': 54.0, 'reps': 10, 'one_rm': 72.0, 'notes': ''},
+      {'date': '2018-06-27', 'lift': 'militaryPress', 'weight_kg': 24.0, 'reps': 9, 'one_rm': 31.0, 'notes': ''},
+      {'date': '2018-06-24', 'lift': 'militaryPress', 'weight_kg': 23.0, 'reps': 10, 'one_rm': 31.0, 'notes': ''},
+      {'date': '2018-06-24', 'lift': 'backSquat', 'weight_kg': 54.0, 'reps': 5, 'one_rm': 63.0, 'notes': ''},
+      {'date': '2018-06-19', 'lift': 'benchPress', 'weight_kg': 31.0, 'reps': 8, 'one_rm': 39.0, 'notes': ''},
+    ];
+
+    final batch = db.batch();
+    for (final e in entries) {
+      batch.insert('history_entries', {
+        'date': e['date'],
+        'lift': e['lift'],
+        'weight_kg': e['weight_kg'],
+        'reps': e['reps'],
+        'one_rm': e['one_rm'],
+        'notes': e['notes'],
+        'is_imported': 1,
+      });
+    }
+    await batch.commit(noResult: true);
+
+    // Set training maxes: joint-safe 1RM × 85%, rounded to nearest 2.5kg
+    // benchPress: joint-safe ~60kg × 0.85 = 51kg
+    // deadlift: joint-safe ~75kg × 0.85 = 63.75 → 65.0kg
+    // militaryPress: joint-safe ~37.5kg × 0.85 = 31.875 → 32.5kg
+    // backSquat: joint-safe ~60kg × 0.85 = 51kg
+    final trainingMaxes = [
+      {'lift': 'benchPress', 'value_kg': 52.5, 'updated_at': todayStr},
+      {'lift': 'deadlift', 'value_kg': 65.0, 'updated_at': todayStr},
+      {'lift': 'militaryPress', 'value_kg': 32.5, 'updated_at': todayStr},
+      {'lift': 'backSquat', 'value_kg': 52.5, 'updated_at': todayStr},
+    ];
+    for (final tm in trainingMaxes) {
+      await db.insert('training_maxes', tm, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+
+    // Insert initial cycle (number=1, start_date=today, is_complete=0)
+    await db.insert('cycles', {
+      'number': 1,
+      'start_date': todayStr,
+      'is_complete': 0,
+    });
+
+    // Set all lifts to week 1
+    for (final lift in ['benchPress', 'deadlift', 'militaryPress', 'backSquat']) {
+      await db.insert(
+        'lift_week',
+        {'lift': lift, 'week': 1},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Migrate: add lifts column to sessions (if not exists)
+      try {
+        await db.execute('ALTER TABLE sessions ADD COLUMN lifts TEXT NOT NULL DEFAULT ""');
+      } catch (_) {}
+
+      // Populate lifts from session_type for any existing rows
+      try {
+        await db.execute(
+          'UPDATE sessions SET lifts = CASE session_type WHEN "mon" THEN "backSquat,benchPress" WHEN "thu" THEN "deadlift,militaryPress" ELSE "" END WHERE lifts = ""',
+        );
+      } catch (_) {}
+
+      // Create lift_week table
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS lift_week (
+            lift TEXT PRIMARY KEY,
+            week INTEGER NOT NULL DEFAULT 1
+          )
+        ''');
+      } catch (_) {}
+    }
   }
 
   // Training Maxes
@@ -145,6 +380,31 @@ class DatabaseHelper {
     );
   }
 
+  Future<void> deleteCycle(int cycleId) async {
+    final db = await database;
+    // Delete set logs for sessions in this cycle
+    final sessions = await getSessionsForCycle(cycleId);
+    for (final s in sessions) {
+      if (s.id != null) {
+        await deleteSetLogsForSession(s.id!);
+      }
+    }
+    // Delete sessions
+    await db.delete('sessions', where: 'cycle_id = ?', whereArgs: [cycleId]);
+    // Delete cycle
+    await db.delete('cycles', where: 'id = ?', whereArgs: [cycleId]);
+  }
+
+  Future<void> updateCycleStartDate(int cycleId, String startDate) async {
+    final db = await database;
+    await db.update(
+      'cycles',
+      {'start_date': startDate},
+      where: 'id = ?',
+      whereArgs: [cycleId],
+    );
+  }
+
   // Sessions
   Future<int> insertSession(SessionModel session) async {
     final db = await database;
@@ -157,7 +417,7 @@ class DatabaseHelper {
       'sessions',
       where: 'cycle_id = ?',
       whereArgs: [cycleId],
-      orderBy: 'week ASC, session_type ASC',
+      orderBy: 'week ASC, id ASC',
     );
     return maps.map((m) => SessionModel.fromMap(m)).toList();
   }
@@ -212,6 +472,29 @@ class DatabaseHelper {
   Future<void> deleteSetLogsForSession(int sessionId) async {
     final db = await database;
     await db.delete('set_logs', where: 'session_id = ?', whereArgs: [sessionId]);
+  }
+
+  // Per-lift week tracking
+  Future<int> getLiftWeek(String lift) async {
+    final db = await database;
+    final maps = await db.query('lift_week', where: 'lift = ?', whereArgs: [lift]);
+    if (maps.isEmpty) return 1;
+    return maps.first['week'] as int;
+  }
+
+  Future<void> setLiftWeek(String lift, int week) async {
+    final db = await database;
+    await db.insert(
+      'lift_week',
+      {'lift': lift, 'week': week},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, int>> getAllLiftWeeks() async {
+    final db = await database;
+    final maps = await db.query('lift_week');
+    return {for (final m in maps) m['lift'] as String: m['week'] as int};
   }
 
   // History Entries

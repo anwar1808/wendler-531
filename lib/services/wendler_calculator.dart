@@ -10,11 +10,11 @@ class WendlerSet {
 
 class WendlerCalculator {
   static double roundToNearest2_5(double value) {
-    return (value / 2.5).round() * 2.5;
+    return (value / 2.5).ceil() * 2.5;
   }
 
   static double calcTrainingMax(double oneRm) {
-    return roundToNearest2_5(oneRm * 0.9);
+    return roundToNearest2_5(oneRm * 0.85);
   }
 
   static double calcEpley1RM(double weight, int reps) {

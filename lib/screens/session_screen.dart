@@ -22,7 +22,6 @@ class SessionScreen extends StatefulWidget {
 
 class _SessionScreenState extends State<SessionScreen> {
   final TextEditingController _notesController = TextEditingController();
-  bool _sessionStarted = false;
   bool _timerVisible = false;
   String _timerLiftName = '';
   String? _timerNextSet;
@@ -41,21 +40,6 @@ class _SessionScreenState extends State<SessionScreen> {
     super.dispose();
   }
 
-  Future<void> _ensureStarted() async {
-    if (_sessionStarted) return;
-    final provider = context.read<AppProvider>();
-    await provider.startSession(_session);
-    // Refresh local session reference
-    final updated = provider.currentSessions.firstWhere(
-      (s) => s.id == _session.id,
-      orElse: () => _session,
-    );
-    setState(() {
-      _session = updated;
-      _sessionStarted = true;
-    });
-  }
-
   void _showRestTimer(String liftName, String? nextSet) {
     setState(() {
       _timerVisible = true;
@@ -66,6 +50,14 @@ class _SessionScreenState extends State<SessionScreen> {
 
   void _hideRestTimer() {
     setState(() => _timerVisible = false);
+  }
+
+  String get _sessionTitle {
+    final liftNames = _session.liftKeys.map((k) {
+      final lt = LiftTypeExtension.fromDbKey(k);
+      return lt?.displayName ?? k;
+    }).join(' + ');
+    return liftNames.isEmpty ? 'Session' : liftNames;
   }
 
   @override
@@ -82,10 +74,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          '${_session.sessionType == 'mon' ? 'Monday' : 'Thursday'} — '
-          'Week ${_session.week}',
-        ),
+        title: Text('Week ${_session.week}'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -111,34 +100,34 @@ class _SessionScreenState extends State<SessionScreen> {
           ListView(
             padding: const EdgeInsets.only(bottom: 100),
             children: [
-              // Start session prompt if not started
-              if (!_sessionStarted && setLogs.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: ElevatedButton(
-                    onPressed: _ensureStarted,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                    ),
-                    child: const Text('Begin Session', style: TextStyle(fontSize: 18)),
+              // Session title
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                child: Text(
+                  _sessionTitle,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+              ),
+              const SizedBox(height: 8),
 
               // Lift sections
-              if (setLogs.isNotEmpty)
-                for (final liftKey in lifts)
-                  _LiftSection(
-                    liftKey: liftKey,
-                    setLogs: setLogs.where((s) => s.lift == liftKey).toList(),
-                    provider: provider,
-                    session: _session,
-                    onSetCompleted: (log, nextSetInfo) {
-                      _showRestTimer(
-                        LiftTypeExtension.fromDbKey(liftKey)?.displayName ?? liftKey,
-                        nextSetInfo,
-                      );
-                    },
-                  ),
+              for (final liftKey in lifts)
+                _LiftSection(
+                  liftKey: liftKey,
+                  setLogs: setLogs.where((s) => s.lift == liftKey).toList(),
+                  provider: provider,
+                  session: _session,
+                  onSetCompleted: (log, nextSetInfo) {
+                    _showRestTimer(
+                      LiftTypeExtension.fromDbKey(liftKey)?.displayName ?? liftKey,
+                      nextSetInfo,
+                    );
+                  },
+                ),
 
               // Session notes
               if (setLogs.isNotEmpty) ...[
@@ -149,12 +138,12 @@ class _SessionScreenState extends State<SessionScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Session Notes',
+                        'SESSION NOTES',
                         style: TextStyle(
                           color: AppTheme.textSecondary,
-                          fontSize: 13,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
+                          letterSpacing: 1.5,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -216,7 +205,7 @@ class _SessionScreenState extends State<SessionScreen> {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Session complete!'),
+          content: Text('Session complete! Week advanced for each lift.'),
           backgroundColor: AppTheme.success,
         ),
       );
@@ -290,37 +279,45 @@ class _LiftSection extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            for (int i = 0; i < setLogs.length; i++) ...[
-              SetTile(
-                setLog: setLogs[i],
-                onChecked: (checked) async {
-                  if (checked == true) {
-                    final log = setLogs[i];
-                    final next = i + 1 < setLogs.length ? setLogs[i + 1] : null;
-                    String? nextSetInfo;
-                    if (next != null) {
-                      nextSetInfo =
-                          '${WendlerCalculator.formatWeight(next.prescribedWeight)} × ${next.repsLabel}';
-                    }
-                    if (log.isAmrap) {
-                      // Show dialog for reps input first
-                      final reps = await _askAmrapReps(context);
-                      await provider.completeSet(log, actualReps: reps);
-                    } else {
-                      await provider.completeSet(log);
-                    }
-                    onSetCompleted(log, nextSetInfo);
-                  } else {
-                    await provider.uncompleteSet(setLogs[i]);
-                  }
-                },
-                onAmrapRepsChanged: setLogs[i].isAmrap
-                    ? (reps) async {
-                        await provider.completeSet(setLogs[i], actualReps: reps);
+            if (setLogs.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Loading sets...',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                ),
+              )
+            else
+              for (int i = 0; i < setLogs.length; i++) ...[
+                SetTile(
+                  setLog: setLogs[i],
+                  onChecked: (checked) async {
+                    if (checked == true) {
+                      final log = setLogs[i];
+                      final next = i + 1 < setLogs.length ? setLogs[i + 1] : null;
+                      String? nextSetInfo;
+                      if (next != null) {
+                        nextSetInfo =
+                            '${WendlerCalculator.formatWeight(next.prescribedWeight)} × ${next.repsLabel}';
                       }
-                    : null,
-              ),
-            ],
+                      if (log.isAmrap) {
+                        final reps = await _askAmrapReps(context);
+                        await provider.completeSet(log, actualReps: reps);
+                      } else {
+                        await provider.completeSet(log);
+                      }
+                      onSetCompleted(log, nextSetInfo);
+                    } else {
+                      await provider.uncompleteSet(setLogs[i]);
+                    }
+                  },
+                  onAmrapRepsChanged: setLogs[i].isAmrap
+                      ? (reps) async {
+                          await provider.completeSet(setLogs[i], actualReps: reps);
+                        }
+                      : null,
+                ),
+              ],
           ],
         ),
       ),

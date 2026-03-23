@@ -74,7 +74,10 @@ class _ImportScreenState extends State<ImportScreen> {
           backgroundColor: AppTheme.success,
         ),
       );
-      Navigator.of(context).pop();
+      // Only pop if we were pushed onto the nav stack (e.g. from Progress screen)
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     }
   }
 

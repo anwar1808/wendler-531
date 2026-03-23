@@ -6,7 +6,18 @@ import '../models/history_entry.dart';
 import '../services/gap_interpolator.dart';
 import '../theme/app_theme.dart';
 
+// Per-lift colours as specified
+const _liftColors = {
+  LiftType.benchPress: Color(0xFFE8C547),
+  LiftType.deadlift: Color(0xFFE87847),
+  LiftType.militaryPress: Color(0xFF47A8E8),
+  LiftType.backSquat: Color(0xFF78E847),
+};
+
+Color liftColor(LiftType l) => _liftColors[l] ?? Colors.white;
+
 class ProgressChart extends StatelessWidget {
+  /// Full history for all lifts, keyed by lift type.
   final Map<LiftType, List<HistoryEntry>> data;
   final Set<LiftType> visibleLifts;
 
@@ -16,47 +27,44 @@ class ProgressChart extends StatelessWidget {
     required this.visibleLifts,
   });
 
-  static const List<Color> liftColors = [
-    Color(0xFFE8C547), // accent yellow — backSquat
-    Color(0xFF64B5F6), // blue — benchPress
-    Color(0xFF81C784), // green — deadlift
-    Color(0xFFFF8A65), // orange — militaryPress
-  ];
-
-  Color colorForLift(LiftType lift) {
-    return liftColors[lift.index % liftColors.length];
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Collect all dates across visible lifts for x-axis
+    // Flatten all entries for the gap interpolator
+    final allEntries = <HistoryEntry>[];
+    for (final entries in data.values) {
+      allEntries.addAll(entries);
+    }
+
+    final chartData = GapInterpolator.process(allEntries);
+
+    // Determine axis bounds
     double minX = double.infinity;
     double maxX = double.negativeInfinity;
     double minY = double.infinity;
     double maxY = double.negativeInfinity;
 
-    final liftSegments = <LiftType, List<List<DataPoint>>>{};
+    void updateBounds(DateTime date, double value) {
+      final x = date.millisecondsSinceEpoch.toDouble();
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (value < minY) minY = value;
+      if (value > maxY) maxY = value;
+    }
 
     for (final lift in LiftType.values) {
       if (!visibleLifts.contains(lift)) continue;
-      final entries = data[lift] ?? [];
-      if (entries.isEmpty) continue;
-
-      final realPoints = entries.map((e) {
-        final dt = DateTime.tryParse(e.date) ?? DateTime.now();
-        return DataPoint(date: dt, value: e.oneRm);
-      }).toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
-
-      final interpolated = GapInterpolator.interpolate(realPoints);
-      liftSegments[lift] = GapInterpolator.toSegments(interpolated);
-
-      for (final p in interpolated) {
-        final x = p.date.millisecondsSinceEpoch.toDouble();
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (p.value < minY) minY = p.value;
-        if (p.value > maxY) maxY = p.value;
+      final lcd = chartData[lift];
+      if (lcd == null) continue;
+      for (final p in lcd.realPoints) {
+        updateBounds(p.date, p.value);
+      }
+      for (final seg in lcd.gapSegments) {
+        for (final p in seg) {
+          updateBounds(p.date, p.value);
+        }
+      }
+      for (final p in lcd.projectedPoints) {
+        updateBounds(p.date, p.value);
       }
     }
 
@@ -70,44 +78,90 @@ class ProgressChart extends StatelessWidget {
       );
     }
 
-    final yPad = (maxY - minY) * 0.1 + 10;
-    final xPad = (maxX - minX) * 0.05 + 86400000.0;
+    final yPad = ((maxY - minY) * 0.12) + 10;
+    final xPad = ((maxX - minX) * 0.05) + 86400000.0;
 
     final lineBarsData = <LineChartBarData>[];
 
     for (final lift in LiftType.values) {
       if (!visibleLifts.contains(lift)) continue;
-      final segments = liftSegments[lift];
-      if (segments == null || segments.isEmpty) continue;
-      final color = colorForLift(lift);
+      final lcd = chartData[lift];
+      if (lcd == null) continue;
+      final color = liftColor(lift);
 
-      for (final segment in segments) {
-        if (segment.isEmpty) continue;
-        final isReal = segment.first.isReal;
-        final spots = segment.map((p) => FlSpot(
-          p.date.millisecondsSinceEpoch.toDouble(),
-          p.value,
-        )).toList();
-
-        lineBarsData.add(LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          color: color,
-          barWidth: 2.5,
-          isStrokeCapRound: true,
-          dotData: FlDotData(
-            show: isReal,
-            getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
-              radius: 4,
-              color: color,
-              strokeColor: AppTheme.background,
-              strokeWidth: 1.5,
+      // --- Real segments (solid, full opacity, small dots) ---
+      if (lcd.realPoints.isNotEmpty) {
+        final solidSegs = _buildSolidSegments(lcd.realPoints);
+        for (final seg in solidSegs) {
+          if (seg.isEmpty) continue;
+          lineBarsData.add(LineChartBarData(
+            spots: seg
+                .map((p) => FlSpot(
+                      p.date.millisecondsSinceEpoch.toDouble(),
+                      p.value,
+                    ))
+                .toList(),
+            isCurved: false,
+            color: color,
+            barWidth: 2.5,
+            isStrokeCapRound: true,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                radius: 3.5,
+                color: color,
+                strokeColor: AppTheme.background,
+                strokeWidth: 1.5,
+              ),
             ),
-          ),
-          dashArray: isReal ? null : [6, 4],
+            dashArray: null,
+          ));
+        }
+      }
+
+      // --- Gap segments (dashed, 50% opacity) ---
+      for (final seg in lcd.gapSegments) {
+        if (seg.length < 2) continue;
+        lineBarsData.add(LineChartBarData(
+          spots: seg
+              .map((p) => FlSpot(
+                    p.date.millisecondsSinceEpoch.toDouble(),
+                    p.value,
+                  ))
+              .toList(),
+          isCurved: true,
+          color: color.withValues(alpha: 0.5),
+          barWidth: 2.0,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          dashArray: [5, 5],
+        ));
+      }
+
+      // --- Projection segment (dotted, 30% opacity, squat only) ---
+      if (lcd.projectedPoints.length >= 2) {
+        lineBarsData.add(LineChartBarData(
+          spots: lcd.projectedPoints
+              .map((p) => FlSpot(
+                    p.date.millisecondsSinceEpoch.toDouble(),
+                    p.value,
+                  ))
+              .toList(),
+          isCurved: false,
+          color: color.withValues(alpha: 0.3),
+          barWidth: 1.5,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          dashArray: [2, 6],
         ));
       }
     }
+
+    // Build lift name lookup for tooltips (bar color → lift)
+    final liftByColor = <int, LiftType>{
+      for (final lift in LiftType.values)
+        liftColor(lift).toARGB32(): lift,
+    };
 
     return LineChart(
       LineChartData(
@@ -115,6 +169,7 @@ class ProgressChart extends StatelessWidget {
         maxX: maxX + xPad,
         minY: minY - yPad,
         maxY: maxY + yPad,
+        clipData: const FlClipData.all(),
         gridData: FlGridData(
           show: true,
           getDrawingHorizontalLine: (_) => FlLine(
@@ -133,11 +188,12 @@ class ProgressChart extends StatelessWidget {
               reservedSize: 36,
               interval: _xInterval(minX, maxX),
               getTitlesWidget: (value, meta) {
-                final dt = DateTime.fromMillisecondsSinceEpoch(value.toInt());
+                final dt =
+                    DateTime.fromMillisecondsSinceEpoch(value.toInt());
                 return SideTitleWidget(
                   axisSide: meta.axisSide,
                   child: Text(
-                    DateFormat('MMM yy').format(dt),
+                    DateFormat('yyyy').format(dt),
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 10,
@@ -155,7 +211,7 @@ class ProgressChart extends StatelessWidget {
                 return SideTitleWidget(
                   axisSide: meta.axisSide,
                   child: Text(
-                    '${value.toInt()}',
+                    '${value.toInt()}kg',
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 10,
@@ -165,8 +221,10 @@ class ProgressChart extends StatelessWidget {
               },
             ),
           ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         borderData: FlBorderData(show: false),
         lineBarsData: lineBarsData,
@@ -175,11 +233,24 @@ class ProgressChart extends StatelessWidget {
             getTooltipColor: (_) => AppTheme.card,
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
-                final dt = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
+                final dt =
+                    DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
+                final barColor = spot.bar.color ?? Colors.white;
+                // Match lift by full-opacity ARGB value
+                final fullAlphaArgb = Color.fromARGB(
+                  255,
+                  barColor.r.round(),
+                  barColor.g.round(),
+                  barColor.b.round(),
+                ).toARGB32();
+                final matchedLift = liftByColor[fullAlphaArgb];
+                final liftName = matchedLift?.displayName ?? '';
                 return LineTooltipItem(
-                  '${DateFormat('d MMM yy').format(dt)}\n${spot.y.toStringAsFixed(1)}kg',
+                  liftName.isNotEmpty
+                      ? '$liftName\n${spot.y.toStringAsFixed(1)}kg\n${DateFormat('d MMM yy').format(dt)}'
+                      : '${spot.y.toStringAsFixed(1)}kg\n${DateFormat('d MMM yy').format(dt)}',
                   TextStyle(
-                    color: spot.bar.color,
+                    color: barColor.withValues(alpha: 1.0),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -192,11 +263,29 @@ class ProgressChart extends StatelessWidget {
     );
   }
 
+  /// Split a sorted list of real points into sub-segments separated by gaps >30d.
+  List<List<DataPoint>> _buildSolidSegments(List<DataPoint> pts) {
+    if (pts.isEmpty) return [];
+    final segs = <List<DataPoint>>[];
+    var current = <DataPoint>[pts.first];
+    for (int i = 1; i < pts.length; i++) {
+      final gap = pts[i].date.difference(pts[i - 1].date).inDays;
+      if (gap > GapInterpolator.gapThresholdDays) {
+        segs.add(List.from(current));
+        current = [pts[i]];
+      } else {
+        current.add(pts[i]);
+      }
+    }
+    if (current.isNotEmpty) segs.add(current);
+    return segs;
+  }
+
   double _xInterval(double minX, double maxX) {
     final rangeDays = (maxX - minX) / 86400000.0;
     if (rangeDays < 60) return 7 * 86400000.0;
-    if (rangeDays < 180) return 30 * 86400000.0;
-    if (rangeDays < 730) return 90 * 86400000.0;
-    return 180 * 86400000.0;
+    if (rangeDays < 365) return 90 * 86400000.0;
+    if (rangeDays < 730) return 180 * 86400000.0;
+    return 365 * 86400000.0;
   }
 }

@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
+  // Dark theme colors
   static const Color background = Color(0xFF121212);
   static const Color card = Color(0xFF1E1E1E);
   static const Color accent = Color(0xFFE8C547);
+  static const Color accentDark = Color(0xFFD4B03A);
   static const Color surface = Color(0xFF2A2A2A);
   static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFB0B0B0);
+  static const Color textSecondary = Color(0xFF9E9E9E);
   static const Color success = Color(0xFF4CAF50);
-  static const Color divider = Color(0xFF333333);
+  static const Color divider = Color(0xFF2E2E2E);
+  static const Color teal = Color(0xFF26A69A);
+  static const Color gold = Color(0xFFE8C547);
 
   static ThemeData get darkTheme {
     return ThemeData(
@@ -17,37 +21,39 @@ class AppTheme {
       scaffoldBackgroundColor: background,
       colorScheme: const ColorScheme.dark(
         primary: accent,
-        secondary: accent,
+        secondary: teal,
         surface: card,
         onPrimary: Colors.black,
-        onSecondary: Colors.black,
+        onSecondary: Colors.white,
         onSurface: textPrimary,
       ),
-      cardTheme: const CardThemeData(
+      cardTheme: CardThemeData(
         color: card,
-        elevation: 0,
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        shape: RoundedRectangleBorder(
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.4),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
       appBarTheme: const AppBarTheme(
-        backgroundColor: background,
+        backgroundColor: card,
         foregroundColor: textPrimary,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
           color: textPrimary,
-          fontSize: 22,
+          fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
+        iconTheme: IconThemeData(color: textPrimary),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: card,
         selectedItemColor: accent,
         unselectedItemColor: textSecondary,
         type: BottomNavigationBarType.fixed,
-        elevation: 0,
+        elevation: 8,
       ),
       textTheme: const TextTheme(
         headlineLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),

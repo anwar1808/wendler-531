@@ -19,12 +19,19 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12),
         children: [
           _SectionHeader(label: 'Training Maxes'),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: Text(
+              'Edit your TM directly or use +2.5 / +5 quick buttons.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            ),
+          ),
           for (final lift in LiftType.values)
-            _TmRow(lift: lift, provider: provider),
+            _TmCard(lift: lift, provider: provider),
 
           const SizedBox(height: 8),
           _SectionHeader(label: 'Rest Timer'),
-          _RestTimerRow(provider: provider),
+          _RestTimerCard(provider: provider),
 
           const SizedBox(height: 8),
           _SectionHeader(label: 'About'),
@@ -43,14 +50,14 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'v1.0.0',
+                  const Text(
+                    'v1.2.0',
                     style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
                   const Text(
                     'A training tracker for Jim Wendler\'s 5/3/1 powerlifting programme. '
-                    'Metric (kg) only. Dark mode always.',
+                    'Metric (kg) only. Each lift tracks its own week independently.',
                     style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                   ),
                 ],
@@ -84,69 +91,96 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _TmRow extends StatelessWidget {
+class _TmCard extends StatelessWidget {
   final LiftType lift;
   final AppProvider provider;
 
-  const _TmRow({required this.lift, required this.provider});
+  const _TmCard({required this.lift, required this.provider});
 
   @override
   Widget build(BuildContext context) {
     final tm = provider.getTrainingMax(lift);
+    final increment = lift.isLower ? 5.0 : 2.5;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                lift.displayName,
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            // Minus button
-            _StepButton(
-              icon: Icons.remove,
-              onPressed: () {
-                final newVal = (tm - 2.5).clamp(20.0, 500.0);
-                provider.updateTrainingMax(lift, newVal);
-              },
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _editTm(context, lift, tm, provider),
-              child: Container(
-                constraints: const BoxConstraints(minWidth: 80),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  WendlerCalculator.formatWeight(tm),
-                  textAlign: TextAlign.center,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  lift.displayName,
                   style: const TextStyle(
-                    color: AppTheme.accent,
+                    color: AppTheme.textPrimary,
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
+                GestureDetector(
+                  onTap: () => _editTm(context, lift, tm, provider),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        WendlerCalculator.formatWeight(tm),
+                        style: const TextStyle(
+                          color: AppTheme.accent,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.edit, size: 16, color: AppTheme.textSecondary),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            // Plus button
-            _StepButton(
-              icon: Icons.add,
-              onPressed: () {
-                final newVal = (tm + 2.5).clamp(20.0, 500.0);
-                provider.updateTrainingMax(lift, newVal);
-              },
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _QuickButton(
+                  label: '-$increment',
+                  onPressed: () {
+                    final newVal = (tm - increment).clamp(20.0, 500.0);
+                    provider.updateTrainingMax(lift, newVal);
+                  },
+                ),
+                const SizedBox(width: 8),
+                _QuickButton(
+                  label: '-2.5',
+                  onPressed: increment > 2.5
+                      ? () {
+                          final newVal = (tm - 2.5).clamp(20.0, 500.0);
+                          provider.updateTrainingMax(lift, newVal);
+                        }
+                      : null,
+                ),
+                const Spacer(),
+                _QuickButton(
+                  label: '+2.5',
+                  onPressed: increment > 2.5
+                      ? () {
+                          final newVal = (tm + 2.5).clamp(20.0, 500.0);
+                          provider.updateTrainingMax(lift, newVal);
+                        }
+                      : null,
+                  accent: true,
+                ),
+                const SizedBox(width: 8),
+                _QuickButton(
+                  label: '+$increment',
+                  onPressed: () {
+                    final newVal = (tm + increment).clamp(20.0, 500.0);
+                    provider.updateTrainingMax(lift, newVal);
+                  },
+                  accent: true,
+                ),
+              ],
             ),
           ],
         ),
@@ -166,33 +200,56 @@ class _TmRow extends StatelessWidget {
   }
 }
 
-class _StepButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onPressed;
+class _QuickButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+  final bool accent;
 
-  const _StepButton({required this.icon, required this.onPressed});
+  const _QuickButton({
+    required this.label,
+    required this.onPressed,
+    this.accent = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onPressed != null;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
       onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 36,
-        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: AppTheme.surface,
+          color: enabled
+              ? (accent
+                  ? AppTheme.accent.withValues(alpha: 0.15)
+                  : AppTheme.surface)
+              : AppTheme.surface.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: enabled
+                ? (accent ? AppTheme.accent.withValues(alpha: 0.4) : AppTheme.divider)
+                : Colors.transparent,
+          ),
         ),
-        child: Icon(icon, color: AppTheme.accent, size: 18),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: enabled
+                ? (accent ? AppTheme.accent : AppTheme.textSecondary)
+                : AppTheme.textSecondary.withValues(alpha: 0.4),
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
 }
 
-class _RestTimerRow extends StatelessWidget {
+class _RestTimerCard extends StatelessWidget {
   final AppProvider provider;
-  const _RestTimerRow({required this.provider});
+  const _RestTimerCard({required this.provider});
 
   @override
   Widget build(BuildContext context) {
@@ -204,7 +261,7 @@ class _RestTimerRow extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -215,15 +272,15 @@ class _RestTimerRow extends StatelessWidget {
                   'Rest Duration',
                   style: TextStyle(
                     color: AppTheme.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
                   label,
                   style: const TextStyle(
                     color: AppTheme.accent,
-                    fontSize: 16,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -234,7 +291,7 @@ class _RestTimerRow extends StatelessWidget {
               value: seconds.toDouble(),
               min: 60,
               max: 300,
-              divisions: 24, // 10-second steps
+              divisions: 24,
               onChanged: (val) {
                 provider.setRestTimerSeconds(val.round());
               },

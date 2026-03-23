@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
-import '../models/session_model.dart';
 import '../models/lift_type.dart';
-import '../services/wendler_calculator.dart';
+import '../models/cycle_model.dart';
 import '../theme/app_theme.dart';
-import 'session_screen.dart';
+import 'weeks_in_cycle_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -16,289 +16,351 @@ class HomeScreen extends StatelessWidget {
 
     if (provider.isLoading) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: AppTheme.accent),
+        body: Center(child: CircularProgressIndicator(color: AppTheme.accent)),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Wendler Log'),
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 100),
+        children: [
+          // 1RM Personal Records Section
+          const _SectionHeader(title: '1RM Personal Records'),
+          _OneRMSection(provider: provider),
+
+          const SizedBox(height: 8),
+
+          // Lifting Cycles Section
+          const _SectionHeader(title: 'Lifting Cycles'),
+          _CyclesSection(provider: provider),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _createNewCycle(context, provider),
+        backgroundColor: AppTheme.teal,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add, size: 28),
+      ),
+    );
+  }
+
+  Future<void> _createNewCycle(BuildContext context, AppProvider provider) async {
+    final newCycle = await provider.startNewCycle();
+
+    if (!context.mounted) return;
+
+    // Show "New Cycle Created" dialog
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _NewCycleDialog(cycle: newCycle, provider: provider),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: AppTheme.textPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
+
+class _OneRMSection extends StatelessWidget {
+  final AppProvider provider;
+  const _OneRMSection({required this.provider});
+
+  // Display order: Military Press, Back Squat, Bench Press, Deadlift
+  static const _displayOrder = [
+    LiftType.militaryPress,
+    LiftType.backSquat,
+    LiftType.benchPress,
+    LiftType.deadlift,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      elevation: 2,
+      child: Column(
+        children: [
+          for (int i = 0; i < _displayOrder.length; i++) ...[
+            _OneRMRow(lift: _displayOrder[i], provider: provider),
+            if (i < _displayOrder.length - 1)
+              const Divider(height: 1, indent: 16, endIndent: 16),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _OneRMRow extends StatelessWidget {
+  final LiftType lift;
+  final AppProvider provider;
+
+  const _OneRMRow({required this.lift, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = provider.get1RMSummary(lift);
+    final tm = provider.getTrainingMax(lift);
+
+    // Best 1RM to show: allTimePeak or fall back to TM
+    String rmLabel;
+    if (summary.allTimePeak != null) {
+      final peak = summary.allTimePeak!;
+      final peakInt = peak == peak.truncateToDouble() ? peak.toInt().toString() : peak.toStringAsFixed(1);
+      rmLabel = '${peakInt}kg';
+    } else {
+      final tmInt = tm == tm.truncateToDouble() ? tm.toInt().toString() : tm.toStringAsFixed(1);
+      rmLabel = '${tmInt}kg';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          // Trophy icon
+          const Icon(Icons.emoji_events, color: AppTheme.gold, size: 22),
+          const SizedBox(width: 12),
+          // Lift name
+          Expanded(
+            child: Text(
+              lift.displayName,
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          // 1RM value
+          Text(
+            rmLabel,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CyclesSection extends StatelessWidget {
+  final AppProvider provider;
+  const _CyclesSection({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final cycles = provider.allCycles;
+
+    if (cycles.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Card(
+          elevation: 1,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text(
+                'No cycles yet.\nTap + to create your first cycle.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
         ),
       );
     }
 
-    final cycle = provider.currentCycle;
-    final week = provider.currentWeek;
-    final sessions = provider.getSessionsForWeek(week);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Wendler 5/3/1'),
-        actions: [
-          if (provider.allSessionsComplete)
-            TextButton.icon(
-              onPressed: () => _confirmCompleteCycle(context, provider),
-              icon: const Icon(Icons.check_circle_outline, color: AppTheme.accent),
-              label: const Text(
-                'Complete Cycle',
-                style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold),
-              ),
-            ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        children: [
-          // Cycle / Week header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                _HeaderChip(
-                  label: 'Cycle ${cycle?.number ?? 1}',
-                  icon: Icons.loop,
-                ),
-                const SizedBox(width: 12),
-                _HeaderChip(
-                  label: week == 4 ? 'Deload Week' : 'Week $week',
-                  icon: Icons.calendar_today,
-                  highlight: week == 4,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Session cards
-          if (sessions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(
-                child: Text(
-                  'No sessions found. Pull down to refresh.',
-                  style: TextStyle(color: AppTheme.textSecondary),
-                ),
-              ),
-            )
-          else
-            for (final session in sessions)
-              _SessionCard(session: session, week: week, provider: provider),
-          const SizedBox(height: 80),
-        ],
-      ),
+    return Column(
+      children: [
+        for (final cycle in cycles)
+          _CycleTile(cycle: cycle, provider: provider),
+      ],
     );
   }
+}
 
-  Future<void> _confirmCompleteCycle(BuildContext context, AppProvider provider) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.card,
-        title: const Text('Complete Cycle?',
-            style: TextStyle(color: AppTheme.textPrimary)),
-        content: const Text(
-          'This will auto-increment your Training Maxes and start Cycle 2.\n\n'
-          '• Squat / Deadlift: +5 kg\n'
-          '• Bench / OHP: +2.5 kg',
-          style: TextStyle(color: AppTheme.textSecondary),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Complete'),
-          ),
-        ],
-      ),
-    );
+class _CycleTile extends StatelessWidget {
+  final CycleModel cycle;
+  final AppProvider provider;
 
-    if (confirmed == true && context.mounted) {
-      await provider.completeCycle();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cycle complete! TMs incremented. New cycle started.'),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
+  const _CycleTile({required this.cycle, required this.provider});
+
+  String _formatDate(String dateStr) {
+    try {
+      final dt = DateTime.parse(dateStr);
+      return DateFormat('MMM d, yyyy').format(dt);
+    } catch (_) {
+      return dateStr;
     }
   }
-}
-
-class _HeaderChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool highlight;
-
-  const _HeaderChip({required this.label, required this.icon, this.highlight = false});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: highlight ? AppTheme.accent.withValues(alpha: 0.15) : AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: highlight ? Border.all(color: AppTheme.accent.withValues(alpha: 0.5)) : null,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: highlight ? AppTheme.accent : AppTheme.textSecondary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: highlight ? AppTheme.accent : AppTheme.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SessionCard extends StatelessWidget {
-  final SessionModel session;
-  final int week;
-  final AppProvider provider;
-
-  const _SessionCard({
-    required this.session,
-    required this.week,
-    required this.provider,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final liftKeys = session.liftKeys;
-    final dayLabel = session.sessionType == 'mon' ? 'Monday' : 'Thursday';
-    final liftNames = liftKeys.map((k) {
-      final lt = LiftTypeExtension.fromDbKey(k);
-      return lt?.displayName ?? k;
-    }).join(' + ');
+    final dateLabel = _formatDate(cycle.startDate);
+    final pct = provider.getCyclePercentComplete(cycle);
+    final pctLabel = '$pct% Complete';
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  dayLabel,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                    letterSpacing: 1.5,
-                    fontWeight: FontWeight.bold,
-                  ),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      elevation: 2,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => WeeksInCycleScreen(cycle: cycle),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              // Cycle icon
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                if (session.isComplete)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.success.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check, size: 12, color: AppTheme.success),
-                        SizedBox(width: 4),
-                        Text('Done', style: TextStyle(color: AppTheme.success, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              liftNames,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                child: const Icon(Icons.sync, color: AppTheme.accent, size: 20),
               ),
-            ),
-            const SizedBox(height: 14),
-            // Weight previews
-            for (final key in liftKeys) ...[
-              _LiftPreviewRow(liftKey: key, week: week, provider: provider),
-              const SizedBox(height: 4),
-            ],
-            const SizedBox(height: 14),
-            if (!session.isComplete)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SessionScreen(session: session),
+              const SizedBox(width: 14),
+              // Date + % complete
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      dateLabel,
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
-                    );
-                  },
-                  child: const Text('Start Session'),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      pctLabel,
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-              )
-            else if (session.date.isNotEmpty)
-              Text(
-                'Completed ${session.date}',
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
               ),
-          ],
+              // Chevron
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 22),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _LiftPreviewRow extends StatelessWidget {
-  final String liftKey;
-  final int week;
+class _NewCycleDialog extends StatelessWidget {
+  final CycleModel cycle;
   final AppProvider provider;
 
-  const _LiftPreviewRow({
-    required this.liftKey,
-    required this.week,
-    required this.provider,
-  });
+  const _NewCycleDialog({required this.cycle, required this.provider});
+
+  String _fmtWeight(double v) {
+    return v == v.truncateToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+  }
+
+  // Display order: Military Press, Back Squat, Bench Press, Deadlift
+  static const _displayOrder = [
+    LiftType.militaryPress,
+    LiftType.backSquat,
+    LiftType.benchPress,
+    LiftType.deadlift,
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final lift = LiftTypeExtension.fromDbKey(liftKey);
-    if (lift == null) return const SizedBox.shrink();
-    final tm = provider.getTrainingMax(lift);
-    final sets = WendlerCalculator.getSetsForWeek(week, tm);
-    if (sets.isEmpty) return const SizedBox.shrink();
-
-    final topSet = sets.last;
-    final weightStr = WendlerCalculator.formatWeight(topSet.weight);
-    final repsLabel = topSet.isAmrap ? '${topSet.reps}+' : '${topSet.reps}';
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 110,
-          child: Text(
-            lift.displayName,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-          ),
+    return AlertDialog(
+      backgroundColor: AppTheme.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        'New Cycle Created',
+        style: TextStyle(
+          color: AppTheme.textPrimary,
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
         ),
-        Text(
-          '$weightStr × $repsLabel',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'One Rep Maxes:',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '(top set)',
-          style: TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 11,
+          const SizedBox(height: 12),
+          for (final lift in _displayOrder)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    lift.displayName,
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                  ),
+                  Text(
+                    '${_fmtWeight(provider.getTrainingMax(lift))}kg',
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppTheme.accent),
+          child: const Text(
+            'OK',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
       ],

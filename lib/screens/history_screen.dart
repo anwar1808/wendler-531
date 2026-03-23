@@ -76,6 +76,8 @@ class _SessionHistoryTileState extends State<_SessionHistoryTile> {
       dateLabel = DateFormat('EEE d MMM yyyy').format(dt);
     } catch (_) {}
 
+    final weekLabel = session.week == 4 ? 'Deload' : 'Week ${session.week}';
+
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -111,7 +113,7 @@ class _SessionHistoryTileState extends State<_SessionHistoryTile> {
                           ),
                         ),
                         Text(
-                          'Week ${session.week} · ${session.sessionType == 'mon' ? 'Monday' : 'Thursday'}',
+                          weekLabel,
                           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                         ),
                       ],
@@ -266,7 +268,9 @@ class _LiftLogSection extends StatelessWidget {
                 ),
                 Text(
                   log.isAmrap
-                      ? (log.actualReps != null ? '${log.actualReps} (${log.prescribedReps}+)' : '${log.prescribedReps}+')
+                      ? (log.actualReps != null
+                          ? '${log.actualReps} (${log.prescribedReps}+)'
+                          : '${log.prescribedReps}+')
                       : '${log.prescribedReps}',
                   style: TextStyle(
                     color: log.isAmrap ? AppTheme.accent : AppTheme.textPrimary,
