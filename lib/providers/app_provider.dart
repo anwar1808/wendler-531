@@ -462,9 +462,15 @@ class AppProvider extends ChangeNotifier {
       _currentCycle = null;
       _currentSessions = [];
       _currentSetLogs = [];
-      await _loadCurrentCycle();
+      // Do NOT call _loadCurrentCycle here — that auto-creates a new cycle.
+      // Just reload the full list; home screen handles empty state.
     }
     await _loadAllCycles();
+    // If there are remaining cycles, set the most recent as current
+    if (_allCycles.isNotEmpty && _currentCycle == null) {
+      _currentCycle = _allCycles.first;
+      await _loadSessionsForCycle(_currentCycle!.id!);
+    }
     notifyListeners();
   }
 

@@ -44,12 +44,14 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     final tm = provider.getTrainingMax(widget.liftType);
     final restSeconds = provider.restTimerSeconds;
     final allTimeRecord = _getAllTimePR(provider);
+    final lastSessionEntry = _getLastSessionEntry(provider);
 
     // Calculate weights
     final warmupSets = _getWarmupSets(tm);
     final workSets = _getWorkSets(tm, widget.week);
     final amrapWeight = workSets.isNotEmpty ? workSets.last.weight : 0.0;
     final prHint = _calcPrHint(amrapWeight, allTimeRecord);
+    final beatLastHint = _calcBeatLastHint(amrapWeight, lastSessionEntry);
 
     final dateLabel = DateFormat('d MMM yyyy').format(DateTime.now());
 
@@ -184,6 +186,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                                   'AMRAP at ${WendlerCalculator.formatWeight(amrapWeight)}',
                               subtitle: _amrapSubtitle(widget.week),
                               prHint: prHint,
+                              beatLastHint: beatLastHint,
                             ),
                           ],
 
@@ -343,6 +346,29 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return history.map((e) => e.oneRm).reduce(max);
   }
 
+  HistoryEntry? _getLastSessionEntry(AppProvider provider) {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final history = provider.getHistoryForLift(widget.liftType);
+    // Only entries logged through the app (not seeded historical data), before today
+    final past = history
+        .where((e) => !e.isImported && e.date.compareTo(today) < 0)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return past.isEmpty ? null : past.first;
+  }
+
+  String? _calcBeatLastHint(double amrapWeight, HistoryEntry? last) {
+    if (last == null || amrapWeight <= 0) return null;
+    final lastOneRm = last.oneRm;
+    // How many reps at amrapWeight needed to beat lastOneRm?
+    if (amrapWeight * (1 + 1 / 30.0) <= lastOneRm) {
+      final repsNeeded = ((lastOneRm / amrapWeight - 1) * 30).ceil() + 1;
+      if (repsNeeded < 1) return null;
+      return '$repsNeeded reps beats last session (${lastOneRm.toStringAsFixed(1)} kg 1RM)';
+    }
+    return '1 rep beats last session (${lastOneRm.toStringAsFixed(1)} kg 1RM)';
+  }
+
   String? _calcPrHint(double amrapWeight, double? allTimePR) {
     if (allTimePR == null || amrapWeight <= 0) return null;
     if (amrapWeight * (1 + 1 / 30.0) <= allTimePR) {
@@ -474,6 +500,7 @@ class _CheckRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final String? prHint;
+  final String? beatLastHint;
   final bool isRest;
 
   const _CheckRow({
@@ -483,6 +510,7 @@ class _CheckRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.prHint,
+    this.beatLastHint,
     this.isRest = false,
   });
 
@@ -535,6 +563,17 @@ class _CheckRow extends StatelessWidget {
                       prHint!,
                       style: const TextStyle(
                         color: AppTheme.accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  if (beatLastHint != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      beatLastHint!,
+                      style: TextStyle(
+                        color: AppTheme.teal,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
