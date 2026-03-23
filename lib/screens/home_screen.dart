@@ -225,6 +225,42 @@ class _CycleTile extends StatelessWidget {
     }
   }
 
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Delete Cycle?',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'This will permanently delete this cycle and all its sessions.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && cycle.id != null) {
+      await provider.deleteCycleById(cycle.id!);
+      await provider.initialize();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateLabel = _formatDate(cycle.startDate);
@@ -234,7 +270,9 @@ class _CycleTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       elevation: 2,
-      child: InkWell(
+      child: GestureDetector(
+        onLongPress: () => _confirmDelete(context),
+        child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
           Navigator.of(context).push(
@@ -286,6 +324,7 @@ class _CycleTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

@@ -24,6 +24,8 @@ class ProgressScreen extends StatefulWidget {
 class _ProgressScreenState extends State<ProgressScreen> {
   // All 4 lifts visible by default
   final Set<LiftType> _hiddenLifts = {};
+  // Bodyweight hidden by default
+  bool _showBodyweight = false;
 
   void _toggleLift(LiftType lift) {
     setState(() {
@@ -32,6 +34,12 @@ class _ProgressScreenState extends State<ProgressScreen> {
       } else {
         _hiddenLifts.add(lift);
       }
+    });
+  }
+
+  void _toggleBodyweight() {
+    setState(() {
+      _showBodyweight = !_showBodyweight;
     });
   }
 
@@ -70,7 +78,12 @@ class _ProgressScreenState extends State<ProgressScreen> {
             flex: 3,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-              child: ProgressChart(data: data, visibleLifts: _visibleLifts),
+              child: ProgressChart(
+                data: data,
+                visibleLifts: _visibleLifts,
+                bodyweightEntries: provider.bodyweightEntries,
+                showBodyweight: _showBodyweight,
+              ),
             ),
           ),
 
@@ -78,6 +91,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
           _LiftToggleRow(
             hiddenLifts: _hiddenLifts,
             onToggle: _toggleLift,
+            showBodyweight: _showBodyweight,
+            onToggleBodyweight: _toggleBodyweight,
           ),
 
           const Divider(height: 1),
@@ -98,10 +113,14 @@ class _ProgressScreenState extends State<ProgressScreen> {
 class _LiftToggleRow extends StatelessWidget {
   final Set<LiftType> hiddenLifts;
   final ValueChanged<LiftType> onToggle;
+  final bool showBodyweight;
+  final VoidCallback onToggleBodyweight;
 
   const _LiftToggleRow({
     required this.hiddenLifts,
     required this.onToggle,
+    required this.showBodyweight,
+    required this.onToggleBodyweight,
   });
 
   @override
@@ -111,28 +130,79 @@ class _LiftToggleRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: LiftType.values.map((lift) {
-          final hidden = hiddenLifts.contains(lift);
-          final color = _liftColors[lift] ?? Colors.white;
-          return Tooltip(
+        children: [
+          ...LiftType.values.map((lift) {
+            final hidden = hiddenLifts.contains(lift);
+            final color = _liftColors[lift] ?? Colors.white;
+            return Tooltip(
+              message: 'Hold to toggle',
+              child: GestureDetector(
+                onLongPress: () => onToggle(lift),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: hidden ? 0.35 : 1.0,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: hidden ? AppTheme.textSecondary : color,
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      color: hidden
+                          ? Colors.transparent
+                          : color.withValues(alpha: 0.12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: hidden ? AppTheme.textSecondary : color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          _shortName(lift),
+                          style: TextStyle(
+                            color: hidden ? AppTheme.textSecondary : color,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+          // Bodyweight chip — hidden by default, long-press to toggle on
+          Tooltip(
             message: 'Hold to toggle',
             child: GestureDetector(
-              onLongPress: () => onToggle(lift),
+              onLongPress: onToggleBodyweight,
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
-                opacity: hidden ? 0.35 : 1.0,
+                opacity: showBodyweight ? 1.0 : 0.35,
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: hidden ? AppTheme.textSecondary : color,
+                      color: showBodyweight
+                          ? AppTheme.textSecondary
+                          : AppTheme.textSecondary,
                       width: 1.5,
                     ),
                     borderRadius: BorderRadius.circular(20),
-                    color: hidden
-                        ? Colors.transparent
-                        : color.withValues(alpha: 0.12),
+                    color: showBodyweight
+                        ? AppTheme.textSecondary.withValues(alpha: 0.12)
+                        : Colors.transparent,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -140,16 +210,16 @@ class _LiftToggleRow extends StatelessWidget {
                       Container(
                         width: 8,
                         height: 8,
-                        decoration: BoxDecoration(
-                          color: hidden ? AppTheme.textSecondary : color,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.textSecondary,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 5),
-                      Text(
-                        _shortName(lift),
+                      const Text(
+                        'Body Wt',
                         style: TextStyle(
-                          color: hidden ? AppTheme.textSecondary : color,
+                          color: AppTheme.textSecondary,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -159,8 +229,8 @@ class _LiftToggleRow extends StatelessWidget {
                 ),
               ),
             ),
-          );
-        }).toList(),
+          ),
+        ],
       ),
     );
   }

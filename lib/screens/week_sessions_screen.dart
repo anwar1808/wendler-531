@@ -8,8 +8,9 @@ import '../providers/app_provider.dart';
 import '../services/wendler_calculator.dart';
 import '../theme/app_theme.dart';
 import 'session_screen.dart';
+import 'workout_screen.dart';
 
-class WeekSessionsScreen extends StatelessWidget {
+class WeekSessionsScreen extends StatefulWidget {
   final CycleModel cycle;
   final int weekNumber;
   final SessionModel? sessionToOpen;
@@ -21,270 +22,190 @@ class WeekSessionsScreen extends StatelessWidget {
     this.sessionToOpen,
   });
 
-  String get _weekLabel => weekNumber == 4 ? 'Week 4 — Deload' : 'Week $weekNumber';
+  @override
+  State<WeekSessionsScreen> createState() => _WeekSessionsScreenState();
+}
+
+class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
+  late int _currentWeek;
 
   @override
-  Widget build(BuildContext context) {
+  void initState() {
+    super.initState();
+    _currentWeek = widget.weekNumber;
+
     // If we have a session to open immediately, do it after build
-    if (sessionToOpen != null) {
+    if (widget.sessionToOpen != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
+        if (mounted) {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => SessionScreen(session: sessionToOpen!),
+              builder: (_) => SessionScreen(session: widget.sessionToOpen!),
             ),
           );
         }
       });
     }
+  }
 
+
+  @override
+  Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
-    final sessions = provider.currentCycle?.id == cycle.id
-        ? provider.getSessionsForWeek(weekNumber)
+
+    // Sessions for this week in this cycle
+    final allSessions = provider.currentCycle?.id == widget.cycle.id
+        ? provider.getSessionsForWeek(_currentWeek)
         : <SessionModel>[];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_weekLabel),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8),
-          if (sessions.isEmpty)
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.fitness_center, color: AppTheme.textSecondary, size: 48),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No sessions yet for $_weekLabel.',
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Tap "Start Session" to begin.',
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(bottom: 24),
-                itemCount: sessions.length,
-                itemBuilder: (context, index) {
-                  return _SessionTile(
-                    session: sessions[index],
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => SessionScreen(session: sessions[index]),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-
-          // Start Session button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showStartSessionSheet(context, provider),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Start Session'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
+        backgroundColor: AppTheme.accent,
+        foregroundColor: Colors.black,
+        title: Text(
+          'Week $_currentWeek',
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.more_vert, color: Colors.black),
+            onPressed: () {},
           ),
         ],
       ),
-    );
-  }
+      body: Column(
+        children: [
+          // Top navigation row: Previous / Next week
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _currentWeek > 1
+                        ? () => setState(() => _currentWeek--)
+                        : null,
+                    icon: const Icon(Icons.keyboard_double_arrow_left, size: 18),
+                    label: const Text('Previous'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _currentWeek > 1
+                          ? AppTheme.textSecondary
+                          : AppTheme.textSecondary.withValues(alpha: 0.3),
+                      side: BorderSide(
+                        color: _currentWeek > 1
+                            ? AppTheme.textSecondary
+                            : AppTheme.textSecondary.withValues(alpha: 0.3),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _currentWeek < 4
+                        ? () => setState(() => _currentWeek++)
+                        : null,
+                    icon: const Icon(Icons.keyboard_double_arrow_right, size: 18),
+                    label: const Text('Next'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _currentWeek < 4 ? AppTheme.accent : AppTheme.surface,
+                      foregroundColor: _currentWeek < 4 ? Colors.black : AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-  void _showStartSessionSheet(BuildContext context, AppProvider provider) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isScrollControlled: true,
-      builder: (_) => _StartSessionSheet(provider: provider, weekNumber: weekNumber),
-    );
-  }
-}
-
-class _SessionTile extends StatelessWidget {
-  final SessionModel session;
-  final VoidCallback onTap;
-
-  const _SessionTile({required this.session, required this.onTap});
-
-  String _formatDate(String dateStr) {
-    try {
-      final dt = DateTime.parse(dateStr);
-      return DateFormat('EEE d MMM yyyy').format(dt);
-    } catch (_) {
-      return dateStr;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final liftNames = session.liftKeys.map((k) {
-      final lt = LiftTypeExtension.fromDbKey(k);
-      return lt?.displayName ?? k;
-    }).join(', ');
-
-    final dateLabel = _formatDate(session.date);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      elevation: 2,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Icon(
-                session.isComplete ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: session.isComplete ? AppTheme.success : AppTheme.textSecondary,
-                size: 22,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
+          // Workouts card
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Card(
+                margin: EdgeInsets.zero,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      dateLabel,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (liftNames.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        liftNames,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                      child: Text(
+                        'Workouts',
                         style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
+                          color: AppTheme.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
                         ),
                       ),
-                    ],
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        children: [
+                          for (final lift in _liftDisplayOrder)
+                            _LiftWorkoutRow(
+                              lift: lift,
+                              weekNumber: _currentWeek,
+                              sessions: allSessions,
+                              cycle: widget.cycle,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => WorkoutScreen(
+                                      liftType: lift,
+                                      week: _currentWeek,
+                                      cycleId: widget.cycle.id ?? 0,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // Bottom bar: Log Bodyweight + Help
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                      child: Row(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () => _showBodyweightDialog(context, provider),
+                            icon: const Icon(Icons.monitor_weight, size: 18),
+                            label: const Text('Log Bodyweight'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              textStyle: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => _showHelpDialog(context),
+                            icon: const Icon(Icons.help_outline, size: 16),
+                            label: const Text('Help'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 22),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Start session bottom sheet
-class _StartSessionSheet extends StatefulWidget {
-  final AppProvider provider;
-  final int weekNumber;
-
-  const _StartSessionSheet({required this.provider, required this.weekNumber});
-
-  @override
-  State<_StartSessionSheet> createState() => _StartSessionSheetState();
-}
-
-class _StartSessionSheetState extends State<_StartSessionSheet> {
-  final Set<LiftType> _selected = {};
-  bool _loading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 32,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Start Session',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close, color: AppTheme.textSecondary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Choose which lifts to include today:',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-          ),
-          const SizedBox(height: 16),
-          for (final lift in LiftType.values) ...[
-            _LiftCheckRow(
-              lift: lift,
-              provider: widget.provider,
-              isSelected: _selected.contains(lift),
-              onChanged: (val) {
-                setState(() {
-                  if (val) {
-                    _selected.add(lift);
-                  } else {
-                    _selected.remove(lift);
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 4),
-          ],
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: (_selected.isEmpty || _loading) ? null : () => _startSession(context),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: _loading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(
-                      'Start Session (${_selected.length} lift${_selected.length == 1 ? '' : 's'})',
-                      style: const TextStyle(fontSize: 16),
-                    ),
             ),
           ),
         ],
@@ -292,85 +213,165 @@ class _StartSessionSheetState extends State<_StartSessionSheet> {
     );
   }
 
-  Future<void> _startSession(BuildContext context) async {
-    setState(() => _loading = true);
-    try {
-      final lifts = LiftType.values.where((l) => _selected.contains(l)).toList();
-      final session = await widget.provider.createAndStartSession(lifts);
-      if (context.mounted) {
-        Navigator.pop(context);
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => SessionScreen(session: session),
+  static const _liftDisplayOrder = [
+    LiftType.militaryPress,
+    LiftType.backSquat,
+    LiftType.benchPress,
+    LiftType.deadlift,
+  ];
+
+  void _showBodyweightDialog(BuildContext context, AppProvider provider) {
+    final controller = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Log Bodyweight',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Weight (kg)',
+            hintText: 'e.g. 58.5',
           ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final val = double.tryParse(controller.text);
+              if (val != null) {
+                final today = DateTime.now().toIso8601String().substring(0, 10);
+                await provider.logBodyweight(today, val);
+                if (ctx.mounted) Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHelpDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'How to use',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Tap a lift row to open the workout screen for that lift.\n\n'
+          'Use the Previous / Next buttons to navigate between weeks.\n\n'
+          'Tap "Log Bodyweight" to record your weight today.',
+          style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _LiftCheckRow extends StatelessWidget {
+class _LiftWorkoutRow extends StatelessWidget {
   final LiftType lift;
-  final AppProvider provider;
-  final bool isSelected;
-  final ValueChanged<bool> onChanged;
+  final int weekNumber;
+  final List<SessionModel> sessions;
+  final CycleModel cycle;
+  final VoidCallback onTap;
 
-  const _LiftCheckRow({
+  const _LiftWorkoutRow({
     required this.lift,
-    required this.provider,
-    required this.isSelected,
-    required this.onChanged,
+    required this.weekNumber,
+    required this.sessions,
+    required this.cycle,
+    required this.onTap,
   });
+
+  // Find the most recent completed session for this lift in this week
+  ({String? date, String? score}) _getLiftStatus() {
+    // Look through sessions for this week that contain this lift
+    final matchingSessions = sessions
+        .where((s) => s.liftKeys.contains(lift.dbKey) && s.isComplete)
+        .toList();
+    if (matchingSessions.isEmpty) return (date: null, score: null);
+    // Most recent
+    matchingSessions.sort((a, b) => b.date.compareTo(a.date));
+    final s = matchingSessions.first;
+    String dateLabel;
+    try {
+      final dt = DateTime.parse(s.date);
+      dateLabel = DateFormat('d MMM yyyy').format(dt);
+    } catch (_) {
+      dateLabel = s.date;
+    }
+    return (date: dateLabel, score: 'Done');
+  }
 
   @override
   Widget build(BuildContext context) {
-    final week = provider.getLiftWeek(lift);
-    final weekLabel = week == 4 ? 'Deload' : 'Week $week';
+    final provider = context.read<AppProvider>();
     final tm = provider.getTrainingMax(lift);
-    final sets = WendlerCalculator.getSetsForWeek(week, tm);
-    final topSet = sets.isNotEmpty ? sets.last : null;
+    final status = _getLiftStatus();
 
     return InkWell(
-      onTap: () => onChanged(!isSelected),
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.accent.withValues(alpha: 0.10) : AppTheme.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected ? AppTheme.accent.withValues(alpha: 0.5) : Colors.transparent,
-          ),
-        ),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Checkbox(
-              value: isSelected,
-              onChanged: (val) => onChanged(val ?? false),
+            Icon(
+              Icons.bar_chart,
+              color: AppTheme.accent,
+              size: 24,
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     lift.displayName,
-                    style: TextStyle(
-                      color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
                       fontSize: 15,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (topSet != null)
-                    Text(
-                      '$weekLabel · ${WendlerCalculator.formatWeight(topSet.weight)} × ${topSet.isAmrap ? '${topSet.reps}+' : '${topSet.reps}'} (top)',
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Date: ${status.date ?? 'TBD'}',
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
                     ),
+                  ),
+                  Text(
+                    'Score: ${status.score ?? 'TBD'}  •  TM: ${WendlerCalculator.formatWeight(tm)}',
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
+            const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 22),
           ],
         ),
       ),

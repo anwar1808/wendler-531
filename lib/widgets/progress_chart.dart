@@ -16,15 +16,21 @@ const _liftColors = {
 
 Color liftColor(LiftType l) => _liftColors[l] ?? Colors.white;
 
+const Color _bodyweightColor = Color(0xFF9E9E9E);
+
 class ProgressChart extends StatelessWidget {
   /// Full history for all lifts, keyed by lift type.
   final Map<LiftType, List<HistoryEntry>> data;
   final Set<LiftType> visibleLifts;
+  final List<Map<String, dynamic>> bodyweightEntries;
+  final bool showBodyweight;
 
   const ProgressChart({
     super.key,
     required this.data,
     required this.visibleLifts,
+    this.bodyweightEntries = const [],
+    this.showBodyweight = false,
   });
 
   @override
@@ -65,6 +71,17 @@ class ProgressChart extends StatelessWidget {
       }
       for (final p in lcd.projectedPoints) {
         updateBounds(p.date, p.value);
+      }
+    }
+
+    // Include bodyweight bounds if visible
+    if (showBodyweight) {
+      for (final e in bodyweightEntries) {
+        final date = DateTime.tryParse(e['date'] as String);
+        final w = e['weight_kg'] as double?;
+        if (date != null && w != null) {
+          updateBounds(date, w);
+        }
       }
     }
 
@@ -153,6 +170,30 @@ class ProgressChart extends StatelessWidget {
           isStrokeCapRound: true,
           dotData: const FlDotData(show: false),
           dashArray: [2, 6],
+        ));
+      }
+    }
+
+    // --- Bodyweight line (dashed grey, always dashed) ---
+    if (showBodyweight && bodyweightEntries.isNotEmpty) {
+      final bwSpots = <FlSpot>[];
+      for (final e in bodyweightEntries) {
+        final date = DateTime.tryParse(e['date'] as String);
+        final w = e['weight_kg'] as double?;
+        if (date != null && w != null) {
+          bwSpots.add(FlSpot(date.millisecondsSinceEpoch.toDouble(), w));
+        }
+      }
+      bwSpots.sort((a, b) => a.x.compareTo(b.x));
+      if (bwSpots.isNotEmpty) {
+        lineBarsData.add(LineChartBarData(
+          spots: bwSpots,
+          isCurved: false,
+          color: _bodyweightColor,
+          barWidth: 1.5,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          dashArray: [4, 4],
         ));
       }
     }

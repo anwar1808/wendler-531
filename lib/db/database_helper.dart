@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -93,6 +93,14 @@ class DatabaseHelper {
         one_rm REAL NOT NULL,
         notes TEXT NOT NULL DEFAULT '',
         is_imported INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE bodyweight_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        weight_kg REAL NOT NULL
       )
     ''');
 
@@ -295,6 +303,115 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
+
+    // Seed bodyweight entries (deduplicate by date — average if multiple same day)
+    final bwRaw = [
+      {'date': '2018-06-24', 'weight_kg': 53.0},
+      {'date': '2018-06-27', 'weight_kg': 54.5},
+      {'date': '2018-07-03', 'weight_kg': 54.5},
+      {'date': '2018-07-06', 'weight_kg': 54.55},
+      {'date': '2018-07-08', 'weight_kg': 54.6},
+      {'date': '2018-07-11', 'weight_kg': 54.6},
+      {'date': '2018-07-16', 'weight_kg': 55.1},
+      {'date': '2018-07-19', 'weight_kg': 55.1},
+      {'date': '2018-07-20', 'weight_kg': 55.6},
+      {'date': '2018-07-27', 'weight_kg': 55.6},
+      {'date': '2018-07-28', 'weight_kg': 55.7},
+      {'date': '2018-07-31', 'weight_kg': 56.5},
+      {'date': '2018-08-01', 'weight_kg': 55.7},
+      {'date': '2018-08-02', 'weight_kg': 56.5},
+      {'date': '2018-08-03', 'weight_kg': 55.5},
+      {'date': '2018-08-09', 'weight_kg': 56.9},
+      {'date': '2018-08-10', 'weight_kg': 55.5},
+      {'date': '2018-08-21', 'weight_kg': 58.4},
+      {'date': '2018-08-31', 'weight_kg': 55.6},
+      {'date': '2018-09-07', 'weight_kg': 56.9},
+      {'date': '2018-09-08', 'weight_kg': 57.7},
+      {'date': '2018-09-11', 'weight_kg': 58.4},
+      {'date': '2018-09-14', 'weight_kg': 55.6},
+      {'date': '2018-09-16', 'weight_kg': 58.0},
+      {'date': '2018-09-19', 'weight_kg': 56.0},
+      {'date': '2018-09-26', 'weight_kg': 56.0},
+      {'date': '2018-10-26', 'weight_kg': 57.1},
+      {'date': '2018-11-06', 'weight_kg': 57.1},
+      {'date': '2018-12-11', 'weight_kg': 57.5},
+      {'date': '2018-12-14', 'weight_kg': 57.5},
+      {'date': '2018-12-15', 'weight_kg': 57.85},
+      {'date': '2018-12-23', 'weight_kg': 58.2},
+      {'date': '2018-12-27', 'weight_kg': 58.2},
+      {'date': '2019-01-03', 'weight_kg': 57.5},
+      {'date': '2019-01-24', 'weight_kg': 57.5},
+      {'date': '2019-02-23', 'weight_kg': 57.5},
+      {'date': '2022-02-02', 'weight_kg': 59.8},
+      {'date': '2022-02-03', 'weight_kg': 59.8},
+      {'date': '2022-02-09', 'weight_kg': 59.7},
+      {'date': '2022-02-15', 'weight_kg': 59.7},
+      {'date': '2022-02-17', 'weight_kg': 59.4},
+      {'date': '2022-02-23', 'weight_kg': 59.4},
+      {'date': '2022-03-13', 'weight_kg': 58.7},
+      {'date': '2022-03-16', 'weight_kg': 58.7},
+      {'date': '2022-03-22', 'weight_kg': 58.0},
+      {'date': '2022-03-31', 'weight_kg': 58.0},
+      {'date': '2022-04-12', 'weight_kg': 58.0},
+      {'date': '2022-04-16', 'weight_kg': 55.4},
+      {'date': '2022-04-28', 'weight_kg': 55.4},
+      {'date': '2022-05-09', 'weight_kg': 55.4},
+      {'date': '2022-09-30', 'weight_kg': 58.0},
+      {'date': '2022-10-06', 'weight_kg': 58.0},
+      {'date': '2022-10-08', 'weight_kg': 57.85},
+      {'date': '2022-11-13', 'weight_kg': 57.7},
+      {'date': '2023-07-12', 'weight_kg': 55.2},
+      {'date': '2023-07-17', 'weight_kg': 57.0},
+      {'date': '2023-07-21', 'weight_kg': 56.5},
+      {'date': '2023-07-22', 'weight_kg': 57.0},
+      {'date': '2023-07-28', 'weight_kg': 56.5},
+      {'date': '2023-07-31', 'weight_kg': 56.5},
+      {'date': '2023-08-02', 'weight_kg': 56.5},
+      {'date': '2023-08-04', 'weight_kg': 56.9},
+      {'date': '2023-08-09', 'weight_kg': 56.9},
+      {'date': '2023-08-10', 'weight_kg': 56.9},
+      {'date': '2023-08-21', 'weight_kg': 58.4},
+      {'date': '2023-09-07', 'weight_kg': 56.9},
+      {'date': '2023-09-08', 'weight_kg': 57.7},
+      {'date': '2023-09-11', 'weight_kg': 58.4},
+      {'date': '2023-09-16', 'weight_kg': 58.0},
+      {'date': '2023-10-02', 'weight_kg': 57.7},
+      {'date': '2023-10-03', 'weight_kg': 58.2},
+      {'date': '2023-10-05', 'weight_kg': 58.0},
+      {'date': '2023-10-08', 'weight_kg': 58.2},
+      {'date': '2023-10-09', 'weight_kg': 58.2},
+      {'date': '2023-10-17', 'weight_kg': 58.25},
+      {'date': '2023-10-18', 'weight_kg': 58.3},
+      {'date': '2023-11-14', 'weight_kg': 58.3},
+      {'date': '2023-11-15', 'weight_kg': 58.3},
+      {'date': '2023-11-17', 'weight_kg': 58.3},
+      {'date': '2023-11-18', 'weight_kg': 58.3},
+      {'date': '2023-11-19', 'weight_kg': 58.3},
+      {'date': '2023-11-23', 'weight_kg': 58.6},
+      {'date': '2023-11-27', 'weight_kg': 58.6},
+      {'date': '2023-12-03', 'weight_kg': 58.3},
+      {'date': '2023-12-07', 'weight_kg': 58.6},
+      {'date': '2023-12-08', 'weight_kg': 59.3},
+      {'date': '2023-12-11', 'weight_kg': 59.3},
+      {'date': '2023-12-13', 'weight_kg': 59.3},
+    ];
+
+    // Deduplicate by date — average if multiple same day
+    final bwByDate = <String, List<double>>{};
+    for (final e in bwRaw) {
+      final d = e['date'] as String;
+      final w = e['weight_kg'] as double;
+      bwByDate.putIfAbsent(d, () => []).add(w);
+    }
+    final bwBatch = db.batch();
+    for (final entry in bwByDate.entries) {
+      final avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
+      bwBatch.insert('bodyweight_entries', {
+        'date': entry.key,
+        'weight_kg': avg,
+      });
+    }
+    await bwBatch.commit(noResult: true);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -317,6 +434,17 @@ class DatabaseHelper {
           CREATE TABLE IF NOT EXISTS lift_week (
             lift TEXT PRIMARY KEY,
             week INTEGER NOT NULL DEFAULT 1
+          )
+        ''');
+      } catch (_) {}
+    }
+    if (oldVersion < 3) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS bodyweight_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            weight_kg REAL NOT NULL
           )
         ''');
       } catch (_) {}
@@ -542,5 +670,20 @@ class DatabaseHelper {
     final db = await database;
     final result = await db.query('training_maxes', limit: 1);
     return result.isNotEmpty;
+  }
+
+  // Bodyweight entries
+  Future<void> insertBodyweight(String date, double weightKg) async {
+    final db = await database;
+    await db.insert(
+      'bodyweight_entries',
+      {'date': date, 'weight_kg': weightKg},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getBodyweightEntries() async {
+    final db = await database;
+    return await db.query('bodyweight_entries', orderBy: 'date ASC');
   }
 }

@@ -20,6 +20,7 @@ class AppProvider extends ChangeNotifier {
   List<SetLogModel> _currentSetLogs = [];
   List<SessionModel> _completedSessions = [];
   List<HistoryEntry> _historyEntries = [];
+  List<Map<String, dynamic>> _bodyweightEntries = [];
   int _restTimerSeconds = 180;
   bool _isLoading = true;
 
@@ -33,6 +34,7 @@ class AppProvider extends ChangeNotifier {
   List<SetLogModel> get currentSetLogs => _currentSetLogs;
   List<SessionModel> get completedSessions => _completedSessions;
   List<HistoryEntry> get historyEntries => _historyEntries;
+  List<Map<String, dynamic>> get bodyweightEntries => _bodyweightEntries;
   int get restTimerSeconds => _restTimerSeconds;
   bool get isLoading => _isLoading;
   Map<String, int> get liftWeeks => _liftWeeks;
@@ -51,6 +53,7 @@ class AppProvider extends ChangeNotifier {
     await _loadCompletedSessions();
     await _loadHistory();
     await _loadLiftWeeks();
+    await _loadBodyweightEntries();
 
     _isLoading = false;
     notifyListeners();
@@ -129,6 +132,16 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _loadHistory() async {
     _historyEntries = await _db.getAllHistoryEntries();
+  }
+
+  Future<void> _loadBodyweightEntries() async {
+    _bodyweightEntries = await _db.getBodyweightEntries();
+  }
+
+  Future<void> logBodyweight(String date, double kg) async {
+    await _db.insertBodyweight(date, kg);
+    await _loadBodyweightEntries();
+    notifyListeners();
   }
 
   // Get current week for a specific lift
@@ -293,6 +306,15 @@ class AppProvider extends ChangeNotifier {
     _restTimerSeconds = seconds;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('rest_timer_seconds', seconds);
+    notifyListeners();
+  }
+
+  // Insert history entries directly (from workout screen log)
+  Future<void> importHistoryEntriesDirect(List<HistoryEntry> entries) async {
+    for (final entry in entries) {
+      await _db.insertHistoryEntry(entry);
+    }
+    await _loadHistory();
     notifyListeners();
   }
 
@@ -482,6 +504,7 @@ class AppProvider extends ChangeNotifier {
     await _loadCompletedSessions();
     await _loadHistory();
     await _loadLiftWeeks();
+    await _loadBodyweightEntries();
     notifyListeners();
   }
 }
