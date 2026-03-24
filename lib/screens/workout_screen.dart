@@ -366,7 +366,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     final history = provider.getHistoryForLift(widget.liftType);
     // Only entries logged through the app (not seeded historical data), before today
     final past = history
-        .where((e) => !e.isImported && e.date.compareTo(today) < 0)
+        .where((e) => !e.isImported && e.date.compareTo(today) <= 0)
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
     return past.isEmpty ? null : past.first;

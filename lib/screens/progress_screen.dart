@@ -133,11 +133,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
         title: const Text('Progress'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: 'Filter',
-            onPressed: () => _showFilterSheet(context),
-          ),
-          IconButton(
             icon: const Icon(Icons.upload_file),
             tooltip: 'Import data',
             onPressed: () {
@@ -145,6 +140,11 @@ class _ProgressScreenState extends State<ProgressScreen> {
                 MaterialPageRoute(builder: (_) => const ImportScreen()),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Filter',
+            onPressed: () => _showFilterSheet(context),
           ),
         ],
       ),

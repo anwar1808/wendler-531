@@ -60,8 +60,15 @@ class _MainNavState extends State<MainNav> {
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
+            icon: ImageIcon(
+              AssetImage('assets/skeleton_nav.png'),
+              size: 24,
+            ),
+            activeIcon: ImageIcon(
+              AssetImage('assets/skeleton_nav.png'),
+              size: 24,
+              color: Color(0xFFE8C547),
+            ),
             label: 'Home',
           ),
           BottomNavigationBarItem(

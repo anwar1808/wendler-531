@@ -498,8 +498,8 @@ class AppProvider extends ChangeNotifier {
         ? _currentSessions
         : <SessionModel>[];
     final completed = sessions.where((s) => s.isComplete).length;
-    // 4 weeks × 1 session each = 4 expected minimum
-    const expected = 4;
+    // 4 lifts × 4 weeks = 16 sessions per full cycle
+    const expected = 16;
     if (expected == 0) return 0;
     return ((completed / expected) * 100).clamp(0, 100).round();
   }
