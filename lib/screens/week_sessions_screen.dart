@@ -342,50 +342,59 @@ class _LiftWorkoutRow extends StatelessWidget {
     final tm = provider.getTrainingMax(lift);
     final status = _getLiftStatus();
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Icon(
-              Icons.bar_chart,
-              color: AppTheme.accent,
-              size: 24,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    lift.displayName,
-                    style: const TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Date: ${status.date ?? 'TBD'}',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                  Text(
-                    'Score: ${status.score ?? 'TBD'}  •  TM: ${WendlerCalculator.formatWeight(tm)}',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+    final isDone = status.date != null;
+
+    return Ink(
+      color: isDone ? AppTheme.surface : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                isDone ? Icons.check_circle : Icons.bar_chart,
+                color: isDone ? AppTheme.success : AppTheme.accent,
+                size: 24,
               ),
-            ),
-            const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 22),
-          ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lift.displayName,
+                      style: TextStyle(
+                        color: isDone ? AppTheme.textSecondary : AppTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Date: ${status.date ?? 'TBD'}',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      'Score: ${status.score ?? 'TBD'}  •  TM: ${WendlerCalculator.formatWeight(tm)}',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: isDone ? AppTheme.surface : AppTheme.textSecondary,
+                size: 22,
+              ),
+            ],
+          ),
         ),
       ),
     );
