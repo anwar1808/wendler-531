@@ -29,6 +29,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   // Track which items are checked off
   final Set<int> _checkedItems = {};
   bool _restTimerVisible = false;
+  bool _initialized = false;
 
   // Step indices
   static const int _idxWarmup = 0;
@@ -37,6 +38,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   static const int _idxSet2 = 3;
   static const int _idxRest2 = 4;
   static const int _idxAmrap = 5;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      final provider = context.read<AppProvider>();
+      final alreadyDone = provider.currentSessions.any((s) =>
+          s.week == widget.week &&
+          s.liftKeys.contains(widget.liftType.dbKey) &&
+          s.isComplete);
+      if (alreadyDone) {
+        _checkedItems.addAll(
+            {_idxWarmup, _idxSet1, _idxRest1, _idxSet2, _idxRest2, _idxAmrap});
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
