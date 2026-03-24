@@ -517,6 +517,17 @@ class AppProvider extends ChangeNotifier {
     return _currentCycle!;
   }
 
+  // Delete a single completed session (and its history entries)
+  Future<void> deleteSessionById(SessionModel session) async {
+    await _db.deleteSessionById(session.id!, session.date, session.liftKeys);
+    if (_currentCycle != null) {
+      await _loadSessionsForCycle(_currentCycle!.id!);
+    }
+    await _loadCompletedSessions();
+    await _loadHistory();
+    notifyListeners();
+  }
+
   // Delete a cycle
   Future<void> deleteCycleById(int cycleId) async {
     await _db.deleteCycle(cycleId);

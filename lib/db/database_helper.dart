@@ -602,6 +602,18 @@ class DatabaseHelper {
     await db.delete('set_logs', where: 'session_id = ?', whereArgs: [sessionId]);
   }
 
+  Future<void> deleteSessionById(int sessionId, String date, List<String> liftKeys) async {
+    final db = await database;
+    await db.delete('set_logs', where: 'session_id = ?', whereArgs: [sessionId]);
+    await db.delete('sessions', where: 'id = ?', whereArgs: [sessionId]);
+    // Also remove corresponding history entries so graph is updated
+    for (final lift in liftKeys) {
+      await db.delete('history_entries',
+          where: 'date = ? AND lift = ? AND is_imported = 0',
+          whereArgs: [date, lift]);
+    }
+  }
+
   // Per-lift week tracking
   Future<int> getLiftWeek(String lift) async {
     final db = await database;

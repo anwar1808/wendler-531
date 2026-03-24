@@ -3,9 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/session_model.dart';
-import '../models/set_log_model.dart';
 import '../models/lift_type.dart';
-import '../db/database_helper.dart';
 import '../services/wendler_calculator.dart';
 import '../theme/app_theme.dart';
 
@@ -43,27 +41,13 @@ class HistoryScreen extends StatelessWidget {
   }
 }
 
-class _SessionHistoryTile extends StatefulWidget {
+class _SessionHistoryTile extends StatelessWidget {
   final SessionModel session;
   const _SessionHistoryTile({required this.session});
 
   @override
-  State<_SessionHistoryTile> createState() => _SessionHistoryTileState();
-}
-
-class _SessionHistoryTileState extends State<_SessionHistoryTile> {
-  bool _expanded = false;
-  List<SetLogModel>? _setLogs;
-
-  Future<void> _loadSetLogs() async {
-    if (_setLogs != null) return;
-    final logs = await DatabaseHelper.instance.getSetLogsForSession(widget.session.id!);
-    if (mounted) setState(() => _setLogs = logs);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final session = widget.session;
+    final provider = context.read<AppProvider>();
     final liftKeys = session.liftKeys;
     final liftNames = liftKeys.map((k) {
       final lt = LiftTypeExtension.fromDbKey(k);
@@ -79,215 +63,116 @@ class _SessionHistoryTileState extends State<_SessionHistoryTile> {
     final weekLabel = session.week == 4 ? 'Deload' : 'Week ${session.week}';
 
     return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          setState(() => _expanded = !_expanded);
-          if (_expanded) _loadSetLogs();
-        },
+      child: GestureDetector(
+        onLongPress: () => _confirmDelete(context, provider),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          dateLabel,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          liftNames,
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          weekLabel,
-                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    color: AppTheme.textSecondary,
-                  ),
-                ],
-              ),
-              if (session.notes.isNotEmpty && !_expanded) ...[
-                const SizedBox(height: 8),
-                Text(
-                  session.notes,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                  ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.success.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ],
-              if (_expanded) ...[
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-                const SizedBox(height: 12),
-                if (_setLogs == null)
-                  const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
-                    ),
-                  )
-                else
-                  _SetLogTable(setLogs: _setLogs!, session: session),
-                if (session.notes.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      session.notes,
+                child: const Icon(Icons.check, color: AppTheme.success, size: 18),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      liftNames,
                       style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 13,
-                        fontStyle: FontStyle.italic,
+                        color: AppTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
-              ],
+                    const SizedBox(height: 2),
+                    Text(
+                      '$dateLabel  •  $weekLabel',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (liftKeys.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      _TopSetLine(liftKeys: liftKeys, week: session.week),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
   }
-}
 
-class _SetLogTable extends StatelessWidget {
-  final List<SetLogModel> setLogs;
-  final SessionModel session;
-
-  const _SetLogTable({required this.setLogs, required this.session});
-
-  @override
-  Widget build(BuildContext context) {
-    final liftKeys = session.liftKeys;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final liftKey in liftKeys) ...[
-          _LiftLogSection(
-            liftKey: liftKey,
-            logs: setLogs.where((s) => s.lift == liftKey).toList(),
+  Future<void> _confirmDelete(BuildContext context, AppProvider provider) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Delete Session?',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'This will permanently delete this session and remove its data from the graph.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
         ],
-      ],
+      ),
     );
+    if (confirmed == true && context.mounted) {
+      await provider.deleteSessionById(session);
+    }
   }
 }
 
-class _LiftLogSection extends StatelessWidget {
-  final String liftKey;
-  final List<SetLogModel> logs;
+class _TopSetLine extends StatelessWidget {
+  final List<String> liftKeys;
+  final int week;
 
-  const _LiftLogSection({required this.liftKey, required this.logs});
+  const _TopSetLine({required this.liftKeys, required this.week});
 
   @override
   Widget build(BuildContext context) {
-    final lift = LiftTypeExtension.fromDbKey(liftKey);
-    if (logs.isEmpty) return const SizedBox.shrink();
-
-    double? topWeight;
-    for (final log in logs) {
-      if (log.isComplete && (topWeight == null || log.prescribedWeight > topWeight)) {
-        topWeight = log.prescribedWeight;
+    final provider = context.read<AppProvider>();
+    final parts = <String>[];
+    for (final key in liftKeys) {
+      final lift = LiftTypeExtension.fromDbKey(key);
+      if (lift == null) continue;
+      final tm = provider.getTrainingMax(lift);
+      final sets = WendlerCalculator.getSetsForWeek(week, tm);
+      if (sets.isNotEmpty) {
+        final top = sets.last;
+        final repsLabel = top.isAmrap ? '${top.reps}+' : '${top.reps}';
+        parts.add('${lift.displayName}: ${WendlerCalculator.formatWeight(top.weight)} × $repsLabel');
       }
     }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              lift?.displayName ?? liftKey,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            if (topWeight != null) ...[
-              const SizedBox(width: 8),
-              Text(
-                'top: ${WendlerCalculator.formatWeight(topWeight)}',
-                style: const TextStyle(color: AppTheme.accent, fontSize: 12),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 6),
-        for (final log in logs)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 50,
-                  child: Text(
-                    'Set ${log.setNumber}',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                  ),
-                ),
-                Text(
-                  WendlerCalculator.formatWeight(log.prescribedWeight),
-                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
-                ),
-                Text(
-                  ' × ',
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                ),
-                Text(
-                  log.isAmrap
-                      ? (log.actualReps != null
-                          ? '${log.actualReps} (${log.prescribedReps}+)'
-                          : '${log.prescribedReps}+')
-                      : '${log.prescribedReps}',
-                  style: TextStyle(
-                    color: log.isAmrap ? AppTheme.accent : AppTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: log.isAmrap ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  log.isComplete ? Icons.check_circle : Icons.radio_button_unchecked,
-                  size: 14,
-                  color: log.isComplete ? AppTheme.success : AppTheme.textSecondary,
-                ),
-              ],
-            ),
-          ),
-      ],
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Text(
+      parts.join('  |  '),
+      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
     );
   }
 }

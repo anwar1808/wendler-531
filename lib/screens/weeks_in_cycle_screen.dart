@@ -148,56 +148,69 @@ class _WeekTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDone = weekInfo.percentComplete >= 100;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       elevation: 2,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              // Calendar icon
-              const Icon(Icons.calendar_today, color: AppTheme.textSecondary, size: 22),
-              const SizedBox(width: 14),
-              // Week info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      weekInfo.label,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: isDone ? AppTheme.success.withValues(alpha: 0.15) : null,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(
+                  isDone ? Icons.check_circle : Icons.calendar_today,
+                  color: isDone ? AppTheme.success : AppTheme.textSecondary,
+                  size: 22,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        weekInfo.label,
+                        style: TextStyle(
+                          color: isDone ? AppTheme.textSecondary : AppTheme.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    if (weekInfo.dateRange.isNotEmpty) ...[
+                      if (weekInfo.dateRange.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          weekInfo.dateRange,
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 2),
                       Text(
-                        weekInfo.dateRange,
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
+                        isDone ? 'Complete' : '${weekInfo.percentComplete}% Complete',
+                        style: TextStyle(
+                          color: isDone ? AppTheme.success : AppTheme.textSecondary,
                           fontSize: 12,
+                          fontWeight: isDone ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 2),
-                    Text(
-                      '${weekInfo.percentComplete}% Complete',
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              // Chevron
-              const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 22),
-            ],
+                Icon(
+                  Icons.chevron_right,
+                  color: isDone ? AppTheme.success.withValues(alpha: 0.5) : AppTheme.textSecondary,
+                  size: 22,
+                ),
+              ],
+            ),
           ),
         ),
       ),

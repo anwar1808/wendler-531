@@ -350,6 +350,11 @@ class _LiftWorkoutRow extends StatelessWidget {
     final provider = context.read<AppProvider>();
     final tm = provider.getTrainingMax(lift);
     final status = _getLiftStatus();
+    final sets = WendlerCalculator.getSetsForWeek(weekNumber, tm);
+    final topSet = sets.isNotEmpty ? sets.last : null;
+    final topSetLabel = topSet != null
+        ? '${WendlerCalculator.formatWeight(topSet.weight)} × ${topSet.isAmrap ? '${topSet.reps}+' : '${topSet.reps}'}'
+        : null;
 
     final isDone = status.date != null;
 
@@ -394,6 +399,17 @@ class _LiftWorkoutRow extends StatelessWidget {
                         fontSize: 12,
                       ),
                     ),
+                    if (topSetLabel != null)
+                      Text(
+                        'Top set: $topSetLabel',
+                        style: TextStyle(
+                          color: isDone
+                              ? AppTheme.textSecondary.withValues(alpha: 0.6)
+                              : AppTheme.accent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                   ],
                 ),
               ),
