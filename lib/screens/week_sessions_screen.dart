@@ -221,7 +221,12 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
   ];
 
   void _showBodyweightDialog(BuildContext context, AppProvider provider) {
-    final controller = TextEditingController();
+    // Pre-fill with last logged value so user knows it was saved
+    final entries = provider.bodyweightEntries;
+    final lastValue = entries.isNotEmpty ? entries.last['weight_kg'] as double? : null;
+    final controller = TextEditingController(
+      text: lastValue != null ? lastValue.toStringAsFixed(1) : '',
+    );
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -251,7 +256,15 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
               if (val != null) {
                 final today = DateTime.now().toIso8601String().substring(0, 10);
                 await provider.logBodyweight(today, val);
-                if (ctx.mounted) Navigator.pop(ctx);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Bodyweight saved: ${val.toStringAsFixed(1)} kg'),
+                      backgroundColor: AppTheme.success,
+                    ),
+                  );
+                }
               }
             },
             child: const Text('Save'),
