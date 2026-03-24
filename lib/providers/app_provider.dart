@@ -318,6 +318,68 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Called from WorkoutScreen Log Score. Saves history entry + marks session complete.
+  Future<void> logScoreAndComplete(
+      LiftType liftType, int week, int cycleId, double amrapWeight, int reps) async {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+
+    // Find an existing incomplete session for this cycle+week+lift
+    final allSessions = await _db.getSessionsForCycle(cycleId);
+    SessionModel? session;
+    try {
+      session = allSessions.firstWhere(
+        (s) => s.week == week && s.liftKeys.contains(liftType.dbKey) && !s.isComplete,
+      );
+    } catch (_) {
+      session = null;
+    }
+
+    // If no session exists, create a minimal one for this lift
+    if (session == null) {
+      final sessionId = await _db.insertSession(SessionModel(
+        cycleId: cycleId,
+        week: week,
+        lifts: liftType.dbKey,
+        date: today,
+      ));
+      session = SessionModel(
+        id: sessionId,
+        cycleId: cycleId,
+        week: week,
+        lifts: liftType.dbKey,
+        date: today,
+      );
+    }
+
+    // Insert history entry (not imported — so beat-last hint picks it up)
+    final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
+    await _db.insertHistoryEntry(HistoryEntry(
+      date: today,
+      lift: liftType.dbKey,
+      weightKg: amrapWeight,
+      reps: reps,
+      oneRm: oneRm,
+      isImported: false,
+    ));
+    await _loadHistory();
+
+    // Mark session complete
+    final updated = session.copyWith(isComplete: true);
+    await _db.updateSession(updated);
+
+    // Advance week for this lift only
+    final nextWeek = _nextWeekFor(liftType.dbKey);
+    await _db.setLiftWeek(liftType.dbKey, nextWeek);
+    _liftWeeks[liftType.dbKey] = nextWeek;
+
+    if (_currentCycle != null) {
+      await _loadSessionsForCycle(_currentCycle!.id!);
+    }
+    await _loadAllCycles();
+    await _loadCompletedSessions();
+    notifyListeners();
+  }
+
   // Import
   Future<void> importHistoryEntries(List<HistoryEntry> entries) async {
     await _db.clearImportedHistory();

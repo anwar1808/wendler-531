@@ -24,6 +24,7 @@ class ProgressChart extends StatelessWidget {
   final Set<LiftType> visibleLifts;
   final List<Map<String, dynamic>> bodyweightEntries;
   final bool showBodyweight;
+  final DateTime? filterStart;
 
   const ProgressChart({
     super.key,
@@ -31,6 +32,7 @@ class ProgressChart extends StatelessWidget {
     required this.visibleLifts,
     this.bodyweightEntries = const [],
     this.showBodyweight = false,
+    this.filterStart,
   });
 
   @override
@@ -42,6 +44,20 @@ class ProgressChart extends StatelessWidget {
     }
 
     final chartData = GapInterpolator.process(allEntries);
+
+    // Apply date filter: clip all segments to filterStart if set
+    final filterMs = filterStart?.millisecondsSinceEpoch.toDouble();
+    if (filterMs != null) {
+      for (final lcd in chartData.values) {
+        lcd.realPoints.removeWhere((p) => p.date.millisecondsSinceEpoch < filterMs);
+        lcd.gapSegments.removeWhere((seg) => seg.isEmpty ||
+            seg.last.date.millisecondsSinceEpoch < filterMs);
+        for (final seg in lcd.gapSegments) {
+          seg.removeWhere((p) => p.date.millisecondsSinceEpoch < filterMs);
+        }
+        lcd.projectedPoints.removeWhere((p) => p.date.millisecondsSinceEpoch < filterMs);
+      }
+    }
 
     // Determine axis bounds
     double minX = double.infinity;
@@ -80,9 +96,16 @@ class ProgressChart extends StatelessWidget {
         final date = DateTime.tryParse(e['date'] as String);
         final w = e['weight_kg'] as double?;
         if (date != null && w != null) {
-          updateBounds(date, w);
+          if (filterMs == null || date.millisecondsSinceEpoch >= filterMs) {
+            updateBounds(date, w);
+          }
         }
       }
+    }
+
+    // If filter is active, ensure minX is at least filterStart
+    if (filterMs != null && minX != double.infinity) {
+      minX = filterMs;
     }
 
     if (minX == double.infinity) {
@@ -181,7 +204,9 @@ class ProgressChart extends StatelessWidget {
         final date = DateTime.tryParse(e['date'] as String);
         final w = e['weight_kg'] as double?;
         if (date != null && w != null) {
-          bwSpots.add(FlSpot(date.millisecondsSinceEpoch.toDouble(), w));
+          if (filterMs == null || date.millisecondsSinceEpoch >= filterMs) {
+            bwSpots.add(FlSpot(date.millisecondsSinceEpoch.toDouble(), w));
+          }
         }
       }
       bwSpots.sort((a, b) => a.x.compareTo(b.x));

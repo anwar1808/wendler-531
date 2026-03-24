@@ -432,25 +432,20 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             onPressed: () async {
               final reps = int.tryParse(controller.text);
               if (reps != null && reps > 0) {
+                await provider.logScoreAndComplete(
+                  widget.liftType,
+                  widget.week,
+                  widget.cycleId,
+                  amrapWeight,
+                  reps,
+                );
                 final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
-                final today =
-                    DateTime.now().toIso8601String().substring(0, 10);
-                await provider.importHistoryEntriesDirect([
-                  HistoryEntry(
-                    date: today,
-                    lift: widget.liftType.dbKey,
-                    weightKg: amrapWeight,
-                    reps: reps,
-                    oneRm: oneRm,
-                    isImported: false,
-                  ),
-                ]);
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'Logged! Est. 1RM: ${oneRm.toStringAsFixed(1)} kg',
+                        'Logged! Est. 1RM: ${oneRm.round()} kg',
                       ),
                       backgroundColor: AppTheme.success,
                     ),

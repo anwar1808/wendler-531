@@ -26,6 +26,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
   final Set<LiftType> _hiddenLifts = {};
   // Bodyweight hidden by default
   bool _showBodyweight = false;
+  // Filter: null = all time, 6 = last 6 weeks, 12 = last 12 weeks
+  int? _filterWeeks;
 
   void _toggleLift(LiftType lift) {
     setState(() {
@@ -41,6 +43,76 @@ class _ProgressScreenState extends State<ProgressScreen> {
     setState(() {
       _showBodyweight = !_showBodyweight;
     });
+  }
+
+  void _showFilterSheet(BuildContext context) {
+    int? selected = _filterWeeks;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Filter Graph',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _FilterOption(
+                label: 'Last 6 weeks',
+                value: 6,
+                groupValue: selected,
+                onChanged: (v) => setSheetState(() => selected = v),
+              ),
+              _FilterOption(
+                label: 'Last 12 weeks',
+                value: 12,
+                groupValue: selected,
+                onChanged: (v) => setSheetState(() => selected = v),
+              ),
+              _FilterOption(
+                label: 'All time',
+                value: null,
+                groupValue: selected,
+                onChanged: (v) => setSheetState(() => selected = v),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() => _filterWeeks = selected);
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('Show'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Set<LiftType> get _visibleLifts {
@@ -60,6 +132,11 @@ class _ProgressScreenState extends State<ProgressScreen> {
       appBar: AppBar(
         title: const Text('Progress'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Filter',
+            onPressed: () => _showFilterSheet(context),
+          ),
           IconButton(
             icon: const Icon(Icons.upload_file),
             tooltip: 'Import data',
@@ -83,6 +160,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
                 visibleLifts: _visibleLifts,
                 bodyweightEntries: provider.bodyweightEntries,
                 showBodyweight: _showBodyweight,
+                filterStart: _filterWeeks == null
+                    ? null
+                    : DateTime.now().subtract(Duration(days: _filterWeeks! * 7)),
               ),
             ),
           ),
@@ -134,10 +214,8 @@ class _LiftToggleRow extends StatelessWidget {
           ...LiftType.values.map((lift) {
             final hidden = hiddenLifts.contains(lift);
             final color = _liftColors[lift] ?? Colors.white;
-            return Tooltip(
-              message: 'Hold to toggle',
-              child: GestureDetector(
-                onLongPress: () => onToggle(lift),
+            return GestureDetector(
+                onTap: () => onToggle(lift),
                 child: AnimatedOpacity(
                   duration: const Duration(milliseconds: 200),
                   opacity: hidden ? 0.35 : 1.0,
@@ -178,14 +256,11 @@ class _LiftToggleRow extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
             );
           }),
-          // Bodyweight chip — hidden by default, long-press to toggle on
-          Tooltip(
-            message: 'Hold to toggle',
-            child: GestureDetector(
-              onLongPress: onToggleBodyweight,
+          // Bodyweight chip — tap to toggle
+          GestureDetector(
+              onTap: onToggleBodyweight,
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
                 opacity: showBodyweight ? 1.0 : 0.35,
@@ -228,7 +303,6 @@ class _LiftToggleRow extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
           ),
         ],
       ),
@@ -358,15 +432,15 @@ class _SummaryRow extends StatelessWidget {
       final max = summary.recentMax!;
       final dateRange = summary.recentDateRange ?? '';
       if ((max - min).abs() < 0.5) {
-        recentLabel = '~${_fmt(max)}kg';
+        recentLabel = '${_fmt(max)}kg';
       } else {
-        recentLabel = '~${_fmt(min)}–${_fmt(max)}kg';
+        recentLabel = '${_fmt(min)}–${_fmt(max)}kg';
       }
       if (dateRange.isNotEmpty) recentLabel += ' ($dateRange)';
     }
 
     final peakLabel = hasData
-        ? '~${_fmt(summary.allTimePeak!)}kg\n(${summary.peakDate ?? ''})'
+        ? '${_fmt(summary.allTimePeak!)}kg\n(${summary.peakDate ?? ''})'
         : '—';
 
     return Padding(
@@ -430,9 +504,49 @@ class _SummaryRow extends StatelessWidget {
     );
   }
 
-  String _fmt(double v) {
-    return v == v.truncateToDouble()
-        ? v.toInt().toString()
-        : v.toStringAsFixed(1);
+  String _fmt(double v) => v.round().toString();
+}
+
+class _FilterOption extends StatelessWidget {
+  final String label;
+  final int? value;
+  final int? groupValue;
+  final ValueChanged<int?> onChanged;
+
+  const _FilterOption({
+    required this.label,
+    required this.value,
+    required this.groupValue,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(value),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Radio<int?>(
+              value: value,
+              groupValue: groupValue,
+              onChanged: onChanged,
+              activeColor: AppTheme.accent,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
