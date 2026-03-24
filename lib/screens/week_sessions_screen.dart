@@ -158,12 +158,17 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
                               sessions: allSessions,
                               cycle: widget.cycle,
                               onTap: () {
+                                final isDone = allSessions.any((s) =>
+                                    s.week == _currentWeek &&
+                                    s.liftKeys.contains(lift.dbKey) &&
+                                    s.isComplete);
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => WorkoutScreen(
                                       liftType: lift,
                                       week: _currentWeek,
                                       cycleId: widget.cycle.id ?? 0,
+                                      isAlreadyComplete: isDone,
                                     ),
                                   ),
                                 );
@@ -227,6 +232,10 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
     final controller = TextEditingController(
       text: lastValue != null ? lastValue.toStringAsFixed(1) : '',
     );
+    if (lastValue != null) {
+      controller.selection =
+          TextSelection(baseOffset: 0, extentOffset: controller.text.length);
+    }
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -345,7 +354,7 @@ class _LiftWorkoutRow extends StatelessWidget {
     final isDone = status.date != null;
 
     return Ink(
-      color: isDone ? AppTheme.surface : Colors.transparent,
+      color: isDone ? AppTheme.success.withValues(alpha: 0.15) : Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(

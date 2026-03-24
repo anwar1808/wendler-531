@@ -13,12 +13,14 @@ class WorkoutScreen extends StatefulWidget {
   final LiftType liftType;
   final int week;
   final int cycleId;
+  final bool isAlreadyComplete;
 
   const WorkoutScreen({
     super.key,
     required this.liftType,
     required this.week,
     required this.cycleId,
+    this.isAlreadyComplete = false,
   });
 
   @override
@@ -44,12 +46,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      final provider = context.read<AppProvider>();
-      final alreadyDone = provider.currentSessions.any((s) =>
-          s.week == widget.week &&
-          s.liftKeys.contains(widget.liftType.dbKey) &&
-          s.isComplete);
-      if (alreadyDone) {
+      if (widget.isAlreadyComplete) {
         _checkedItems.addAll(
             {_idxWarmup, _idxSet1, _idxRest1, _idxSet2, _idxRest2, _idxAmrap});
       }
@@ -459,7 +456,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 );
                 final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
                 if (ctx.mounted) {
-                  Navigator.pop(ctx);
+                  Navigator.pop(ctx); // close dialog
+                }
+                if (context.mounted) {
+                  Navigator.of(context).pop(); // return to week screen
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
