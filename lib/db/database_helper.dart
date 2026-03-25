@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -101,6 +101,16 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL,
         weight_kg REAL NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE zone2_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id INTEGER NOT NULL,
+        week_number INTEGER NOT NULL,
+        minutes INTEGER NOT NULL,
+        date TEXT NOT NULL
       )
     ''');
 
@@ -449,6 +459,19 @@ class DatabaseHelper {
         ''');
       } catch (_) {}
     }
+    if (oldVersion < 4) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS zone2_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cycle_id INTEGER NOT NULL,
+            week_number INTEGER NOT NULL,
+            minutes INTEGER NOT NULL,
+            date TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+    }
   }
 
   // Training Maxes
@@ -697,5 +720,33 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getBodyweightEntries() async {
     final db = await database;
     return await db.query('bodyweight_entries', orderBy: 'date ASC');
+  }
+
+  Future<void> insertZone2Log(int cycleId, int weekNumber, int minutes, String date) async {
+    final db = await database;
+    await db.insert('zone2_logs', {
+      'cycle_id': cycleId,
+      'week_number': weekNumber,
+      'minutes': minutes,
+      'date': date,
+    });
+  }
+
+  Future<int> getZone2MinutesForWeek(int cycleId, int weekNumber) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COALESCE(SUM(minutes), 0) as total FROM zone2_logs WHERE cycle_id = ? AND week_number = ?',
+      [cycleId, weekNumber],
+    );
+    return (result.first['total'] as num).toInt();
+  }
+
+  Future<List<Map<String, dynamic>>> getImportedHistoryEntries() async {
+    final db = await database;
+    return await db.query(
+      'history_entries',
+      where: 'is_imported = 1',
+      orderBy: 'date DESC',
+    );
   }
 }

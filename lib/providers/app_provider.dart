@@ -21,6 +21,8 @@ class AppProvider extends ChangeNotifier {
   List<SessionModel> _completedSessions = [];
   List<HistoryEntry> _historyEntries = [];
   List<Map<String, dynamic>> _bodyweightEntries = [];
+  // zone2 minutes per week cache: key = "cycleId_weekNum"
+  final Map<String, int> _zone2Cache = {};
   int _restTimerSeconds = 180;
   bool _isLoading = true;
 
@@ -54,6 +56,7 @@ class AppProvider extends ChangeNotifier {
     await _loadHistory();
     await _loadLiftWeeks();
     await _loadBodyweightEntries();
+    await _loadZone2Cache();
 
     _isLoading = false;
     notifyListeners();
@@ -142,6 +145,27 @@ class AppProvider extends ChangeNotifier {
     await _db.insertBodyweight(date, kg);
     await _loadBodyweightEntries();
     notifyListeners();
+  }
+
+  Future<void> logZone2(int cycleId, int weekNumber, int minutes) async {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    await _db.insertZone2Log(cycleId, weekNumber, minutes, today);
+    final key = '${cycleId}_$weekNumber';
+    _zone2Cache[key] = (_zone2Cache[key] ?? 0) + minutes;
+    notifyListeners();
+  }
+
+  int getZone2MinutesForWeek(int cycleId, int weekNumber) {
+    return _zone2Cache['${cycleId}_$weekNumber'] ?? 0;
+  }
+
+  Future<void> _loadZone2Cache() async {
+    _zone2Cache.clear();
+    if (_currentCycle == null) return;
+    for (int w = 1; w <= 4; w++) {
+      final mins = await _db.getZone2MinutesForWeek(_currentCycle!.id!, w);
+      if (mins > 0) _zone2Cache['${_currentCycle!.id!}_$w'] = mins;
+    }
   }
 
   // Get current week for a specific lift
@@ -567,12 +591,14 @@ class AppProvider extends ChangeNotifier {
     return _currentSessions.where((s) => s.week == week).toList();
   }
 
-  // Week % complete: sessions done in that week / lifts in cycle
+  // Week % complete: 4 lifts + Zone2 ≥ 100min = 5 tasks, 20% each
   int getWeekPercentComplete(int week) {
     final sessions = getSessionsForWeek(week);
-    if (sessions.isEmpty) return 0;
-    final completed = sessions.where((s) => s.isComplete).length;
-    return ((completed / sessions.length) * 100).clamp(0, 100).round();
+    final liftsCompleted = sessions.where((s) => s.isComplete).length.clamp(0, 4);
+    final cycleId = _currentCycle?.id ?? 0;
+    final zone2Mins = getZone2MinutesForWeek(cycleId, week);
+    final zone2Done = zone2Mins >= 100 ? 1 : 0;
+    return (((liftsCompleted + zone2Done) / 5) * 100).clamp(0, 100).round();
   }
 
   // Reload everything

@@ -125,91 +125,106 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
             ),
           ),
 
-          // Workouts card
+          // Workouts card + Cardio card
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Card(
-                margin: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-                      child: Text(
-                        'Workouts',
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                children: [
+                  // Workouts card
+                  Expanded(
+                    flex: 3,
+                    child: Card(
+                      margin: EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final lift in _liftDisplayOrder)
-                            _LiftWorkoutRow(
-                              lift: lift,
-                              weekNumber: _currentWeek,
-                              sessions: allSessions,
-                              cycle: widget.cycle,
-                              onTap: () {
-                                final isDone = allSessions.any((s) =>
-                                    s.week == _currentWeek &&
-                                    s.liftKeys.contains(lift.dbKey) &&
-                                    s.isComplete);
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => WorkoutScreen(
-                                      liftType: lift,
-                                      week: _currentWeek,
-                                      cycleId: widget.cycle.id ?? 0,
-                                      isAlreadyComplete: isDone,
-                                    ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                            child: Text(
+                              'Workouts',
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          Expanded(
+                            child: ListView(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              children: [
+                                for (final lift in _liftDisplayOrder)
+                                  _LiftWorkoutRow(
+                                    lift: lift,
+                                    weekNumber: _currentWeek,
+                                    sessions: allSessions,
+                                    cycle: widget.cycle,
+                                    onTap: () {
+                                      final isDone = allSessions.any((s) =>
+                                          s.week == _currentWeek &&
+                                          s.liftKeys.contains(lift.dbKey) &&
+                                          s.isComplete);
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => WorkoutScreen(
+                                            liftType: lift,
+                                            week: _currentWeek,
+                                            cycleId: widget.cycle.id ?? 0,
+                                            isAlreadyComplete: isDone,
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                );
-                              },
+                              ],
                             ),
+                          ),
+                          const Divider(height: 1),
+                          // Bottom bar: Log Bodyweight + Help
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                            child: Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: () => _showBodyweightDialog(context, provider),
+                                  icon: const Icon(Icons.monitor_weight, size: 18),
+                                  label: const Text('Log Bodyweight'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.accent,
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 10),
+                                    textStyle: const TextStyle(
+                                        fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ),
+                                const Spacer(),
+                                TextButton.icon(
+                                  onPressed: () => _showHelpDialog(context),
+                                  icon: const Icon(Icons.help_outline, size: 16),
+                                  label: const Text('Help'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: AppTheme.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    const Divider(height: 1),
-                    // Bottom bar: Log Bodyweight + Help
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                      child: Row(
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: () => _showBodyweightDialog(context, provider),
-                            icon: const Icon(Icons.monitor_weight, size: 18),
-                            label: const Text('Log Bodyweight'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.accent,
-                              foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
-                              textStyle: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                          ),
-                          const Spacer(),
-                          TextButton.icon(
-                            onPressed: () => _showHelpDialog(context),
-                            icon: const Icon(Icons.help_outline, size: 16),
-                            label: const Text('Help'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Cardio card
+                  _CardioCard(
+                    cycleId: widget.cycle.id ?? 0,
+                    weekNumber: _currentWeek,
+                    provider: provider,
+                  ),
+                ],
               ),
             ),
           ),
@@ -421,6 +436,164 @@ class _LiftWorkoutRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CardioCard extends StatelessWidget {
+  final int cycleId;
+  final int weekNumber;
+  final AppProvider provider;
+
+  const _CardioCard({
+    required this.cycleId,
+    required this.weekNumber,
+    required this.provider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final totalMins = provider.getZone2MinutesForWeek(cycleId, weekNumber);
+    const target = 100;
+    final isDone = totalMins >= target;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: isDone ? AppTheme.success.withValues(alpha: 0.15) : null,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+              child: Text(
+                'Cardio',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            InkWell(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+              onTap: () => _showZone2Dialog(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      isDone ? Icons.check_circle : Icons.directions_run,
+                      color: isDone ? AppTheme.success : AppTheme.teal,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Zone 2',
+                            style: TextStyle(
+                              color: isDone ? AppTheme.textSecondary : AppTheme.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            isDone
+                                ? '$totalMins / $target min — complete'
+                                : '$totalMins / $target min this week',
+                            style: TextStyle(
+                              color: isDone ? AppTheme.success : AppTheme.textSecondary,
+                              fontSize: 12,
+                              fontWeight: isDone ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.add_circle_outline,
+                      color: isDone ? AppTheme.success.withValues(alpha: 0.5) : AppTheme.teal,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showZone2Dialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Log Zone 2',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'How many minutes?',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(
+                hintText: '50',
+                suffix: Text('min', style: TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final mins = int.tryParse(controller.text);
+              if (mins != null && mins > 0) {
+                await provider.logZone2(cycleId, weekNumber, mins);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Zone 2 logged: $mins min'),
+                      backgroundColor: AppTheme.success,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
       ),
     );
   }
