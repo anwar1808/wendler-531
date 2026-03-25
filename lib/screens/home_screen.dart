@@ -6,7 +6,6 @@ import '../models/lift_type.dart';
 import '../models/cycle_model.dart';
 import '../theme/app_theme.dart';
 import 'weeks_in_cycle_screen.dart';
-import 'historical_data_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -42,11 +41,6 @@ class HomeScreen extends StatelessWidget {
           const _SectionHeader(title: 'Lifting Cycles'),
           _CyclesSection(provider: provider),
 
-          const SizedBox(height: 8),
-
-          // Historical Data
-          const _SectionHeader(title: 'Historical Data'),
-          _HistoricalDataTile(),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -335,59 +329,6 @@ class _CycleTile extends StatelessWidget {
   }
 }
 
-class _HistoricalDataTile extends StatelessWidget {
-  const _HistoricalDataTile();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      elevation: 2,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const HistoricalDataScreen()),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.teal.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.history_edu, color: AppTheme.teal, size: 20),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Historical Data',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '2018 – 2024 training records',
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 22),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _NewCycleDialog extends StatelessWidget {
   final CycleModel cycle;
