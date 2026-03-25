@@ -229,6 +229,43 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               ),
                             ],
                           ),
+
+                          // Session notes (shown when this workout has been logged)
+                          if (widget.isAlreadyComplete && lastSessionEntry != null && lastSessionEntry.notes.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.surface,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppTheme.textSecondary.withValues(alpha: 0.2)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'NOTES',
+                                    style: TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    lastSessionEntry.notes,
+                                    style: const TextStyle(
+                                      color: AppTheme.textPrimary,
+                                      fontSize: 13,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -400,7 +437,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   void _showLogScoreDialog(
       BuildContext context, AppProvider provider, double amrapWeight) {
-    final controller = TextEditingController();
+    final repsController = TextEditingController();
+    final notesController = TextEditingController();
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -423,7 +461,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: controller,
+              controller: repsController,
               keyboardType: TextInputType.number,
               autofocus: true,
               textAlign: TextAlign.center,
@@ -436,6 +474,19 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: notesController,
+              keyboardType: TextInputType.multiline,
+              maxLines: 3,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+              decoration: const InputDecoration(
+                hintText: 'Notes (optional) — how did it feel?',
+                hintStyle: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
           ],
         ),
         actions: [
@@ -445,7 +496,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final reps = int.tryParse(controller.text);
+              final reps = int.tryParse(repsController.text);
               if (reps != null && reps > 0) {
                 await provider.logScoreAndComplete(
                   widget.liftType,
@@ -453,6 +504,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   widget.cycleId,
                   amrapWeight,
                   reps,
+                  notes: notesController.text.trim(),
                 );
                 final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
                 if (ctx.mounted) {

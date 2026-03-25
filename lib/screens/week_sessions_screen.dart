@@ -125,96 +125,56 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
             ),
           ),
 
-          // Workouts card + Cardio card
+          // Workouts card + Cardio card + bottom bar
           Expanded(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Workouts card
-                  Expanded(
-                    flex: 3,
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-                            child: Text(
-                              'Workouts',
-                              style: const TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                          child: Text(
+                            'Workouts',
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                          const Divider(height: 1),
-                          Expanded(
-                            child: ListView(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              children: [
-                                for (final lift in _liftDisplayOrder)
-                                  _LiftWorkoutRow(
-                                    lift: lift,
-                                    weekNumber: _currentWeek,
-                                    sessions: allSessions,
-                                    cycle: widget.cycle,
-                                    onTap: () {
-                                      final isDone = allSessions.any((s) =>
-                                          s.week == _currentWeek &&
-                                          s.liftKeys.contains(lift.dbKey) &&
-                                          s.isComplete);
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => WorkoutScreen(
-                                            liftType: lift,
-                                            week: _currentWeek,
-                                            cycleId: widget.cycle.id ?? 0,
-                                            isAlreadyComplete: isDone,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const Divider(height: 1),
-                          // Bottom bar: Log Bodyweight + Help
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                            child: Row(
-                              children: [
-                                ElevatedButton.icon(
-                                  onPressed: () => _showBodyweightDialog(context, provider),
-                                  icon: const Icon(Icons.monitor_weight, size: 18),
-                                  label: const Text('Log Bodyweight'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.accent,
-                                    foregroundColor: Colors.black,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 10),
-                                    textStyle: const TextStyle(
-                                        fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const Divider(height: 1),
+                        for (final lift in _liftDisplayOrder)
+                          _LiftWorkoutRow(
+                            lift: lift,
+                            weekNumber: _currentWeek,
+                            sessions: allSessions,
+                            cycle: widget.cycle,
+                            onTap: () {
+                              final isDone = allSessions.any((s) =>
+                                  s.week == _currentWeek &&
+                                  s.liftKeys.contains(lift.dbKey) &&
+                                  s.isComplete);
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => WorkoutScreen(
+                                    liftType: lift,
+                                    week: _currentWeek,
+                                    cycleId: widget.cycle.id ?? 0,
+                                    isAlreadyComplete: isDone,
                                   ),
                                 ),
-                                const Spacer(),
-                                TextButton.icon(
-                                  onPressed: () => _showHelpDialog(context),
-                                  icon: const Icon(Icons.help_outline, size: 16),
-                                  label: const Text('Help'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
-                        ],
-                      ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -223,6 +183,34 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
                     cycleId: widget.cycle.id ?? 0,
                     weekNumber: _currentWeek,
                     provider: provider,
+                  ),
+                  const SizedBox(height: 12),
+                  // Bottom bar: Log Bodyweight + Help
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () => _showBodyweightDialog(context, provider),
+                        icon: const Icon(Icons.monitor_weight, size: 18),
+                        label: const Text('Log Bodyweight'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          textStyle: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () => _showHelpDialog(context),
+                        icon: const Icon(Icons.help_outline, size: 16),
+                        label: const Text('Help'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

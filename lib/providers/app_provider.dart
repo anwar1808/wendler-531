@@ -344,7 +344,8 @@ class AppProvider extends ChangeNotifier {
 
   /// Called from WorkoutScreen Log Score. Saves history entry + marks session complete.
   Future<void> logScoreAndComplete(
-      LiftType liftType, int week, int cycleId, double amrapWeight, int reps) async {
+      LiftType liftType, int week, int cycleId, double amrapWeight, int reps,
+      {String notes = ''}) async {
     final today = DateTime.now().toIso8601String().substring(0, 10);
 
     // Find an existing incomplete session for this cycle+week+lift
@@ -383,6 +384,7 @@ class AppProvider extends ChangeNotifier {
       weightKg: amrapWeight,
       reps: reps,
       oneRm: oneRm,
+      notes: notes,
       isImported: false,
     ));
     await _loadHistory();
