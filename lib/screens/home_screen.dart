@@ -24,11 +24,9 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Wendler Log'),
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-          ),
+        leading: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Image.asset('assets/skeleton_nav.png', color: AppTheme.accent),
         ),
       ),
       body: ListView(
