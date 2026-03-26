@@ -2,7 +2,7 @@ name: wendler_531
 description: "Wendler 5/3/1 powerlifting programme tracker"
 publish_to: 'none'
 
-version: 1.15.3+23
+version: 1.16.0+24
 
 environment:
   sdk: ^3.11.0
@@ -17,6 +17,7 @@ dependencies:
   provider: ^6.1.2
   intl: ^0.19.0
   shared_preferences: ^2.3.3
+  path_provider: ^2.1.0
 
 dev_dependencies:
   flutter_test:

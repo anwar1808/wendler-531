@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
 import '../providers/app_provider.dart';
 import '../models/lift_type.dart';
 import '../theme/app_theme.dart';
@@ -115,6 +117,49 @@ class _ProgressScreenState extends State<ProgressScreen> {
     );
   }
 
+  Future<void> _exportData(BuildContext context, AppProvider provider) async {
+    try {
+      final entries = provider.historyEntries;
+      if (entries.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No data to export.')),
+        );
+        return;
+      }
+
+      final buf = StringBuffer();
+      buf.writeln('date,lift,weight_kg,reps,one_rm,notes,is_imported');
+      for (final e in entries) {
+        final notes = e.notes.replaceAll('"', '""');
+        buf.writeln('${e.date},${e.lift},${e.weightKg},${e.reps},${e.oneRm},"$notes",${e.isImported ? 1 : 0}');
+      }
+
+      final dir = await getExternalStorageDirectory();
+      final timestamp = DateTime.now().toIso8601String().substring(0, 10);
+      final file = File('${dir!.path}/wendler_export_$timestamp.csv');
+      await file.writeAsString(buf.toString());
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported ${entries.length} entries to ${file.path}'),
+            backgroundColor: AppTheme.success,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   Set<LiftType> get _visibleLifts {
     return LiftType.values.where((l) => !_hiddenLifts.contains(l)).toSet();
   }
@@ -133,13 +178,18 @@ class _ProgressScreenState extends State<ProgressScreen> {
         title: const Text('Progress'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.upload_file),
+            icon: const Icon(Icons.download),
             tooltip: 'Import data',
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ImportScreen()),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.upload),
+            tooltip: 'Export data',
+            onPressed: () => _exportData(context, provider),
           ),
           IconButton(
             icon: const Icon(Icons.tune),
