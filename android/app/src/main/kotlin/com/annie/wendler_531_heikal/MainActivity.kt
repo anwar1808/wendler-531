@@ -1,4 +1,4 @@
-package com.annie.wendler_531
+package com.annie.wendler_531_heikal
 
 import io.flutter.embedding.android.FlutterActivity
 
