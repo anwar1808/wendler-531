@@ -70,7 +70,12 @@ class AppProvider extends ChangeNotifier {
   Future<void> _ensureDefaultTrainingMaxes() async {
     for (final lift in LiftType.values) {
       if (!_trainingMaxes.containsKey(lift.dbKey)) {
-        final defaultTm = lift.isLower ? 100.0 : 60.0;
+        // Heikal's default TMs
+        final defaultTm = switch (lift.dbKey) {
+          'benchPress'    => 70.0,
+          'militaryPress' => 47.5,
+          _               => 100.0, // backSquat + deadlift
+        };
         await _db.upsertTrainingMax(TrainingMax(
           lift: lift.dbKey,
           valueKg: defaultTm,

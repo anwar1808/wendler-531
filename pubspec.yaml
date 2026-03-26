@@ -2,7 +2,7 @@ name: wendler_531
 description: "Wendler 5/3/1 powerlifting programme tracker"
 publish_to: 'none'
 
-version: 1.15.3+23
+version: 1.15.3+24
 
 environment:
   sdk: ^3.11.0
