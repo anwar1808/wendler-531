@@ -115,12 +115,15 @@ class GapInterpolator {
       // Control point at t=0.35
       const tCtrl = 0.35;
 
+      // Use ~1 point per week so narrow filters always have enough points
+      final steps = (gapDays ~/ 7).clamp(20, 500);
+
       final segmentPts = <DataPoint>[];
       // Start with the real anchor (so lines connect cleanly)
       segmentPts.add(DataPoint(date: p0.date, value: p0.value, isReal: false));
 
-      for (int s = 1; s <= interpolationSteps; s++) {
-        final t = s / interpolationSteps.toDouble();
+      for (int s = 1; s <= steps; s++) {
+        final t = s / steps.toDouble();
         // Bezier B(t) = (1-t)^2*P0 + 2*(1-t)*t*P1 + t^2*P2
         // x-axis: 0..1 mapped, control x = tCtrl
         // value:

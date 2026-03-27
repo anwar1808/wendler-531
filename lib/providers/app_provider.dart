@@ -593,14 +593,11 @@ class AppProvider extends ChangeNotifier {
     return _currentSessions.where((s) => s.week == week).toList();
   }
 
-  // Week % complete: 4 lifts + Zone2 ≥ 100min = 5 tasks, 20% each
+  // Week % complete: 4 lifts only (25% each). Zone 2 is tracked but not counted.
   int getWeekPercentComplete(int week) {
     final sessions = getSessionsForWeek(week);
     final liftsCompleted = sessions.where((s) => s.isComplete).length.clamp(0, 4);
-    final cycleId = _currentCycle?.id ?? 0;
-    final zone2Mins = getZone2MinutesForWeek(cycleId, week);
-    final zone2Done = zone2Mins >= 100 ? 1 : 0;
-    return (((liftsCompleted + zone2Done) / 5) * 100).clamp(0, 100).round();
+    return ((liftsCompleted / 4) * 100).clamp(0, 100).round();
   }
 
   // Reload everything
