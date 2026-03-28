@@ -27,6 +27,8 @@ class AppProvider extends ChangeNotifier {
   final Map<String, int> _immediateJointLogs = {};
   // Transition decision cache: key = "fromWeek_liftKey" → decision string
   final Map<String, String> _transitionDecisions = {};
+  // TM before each transition decision: key = "fromWeek_liftKey" → tm value
+  final Map<String, double> _transitionTmBefore = {};
   int _restTimerSeconds = 180;
   bool _isLoading = true;
 
@@ -176,12 +178,15 @@ class AppProvider extends ChangeNotifier {
   Future<void> _loadJointCaches() async {
     _immediateJointLogs.clear();
     _transitionDecisions.clear();
+    _transitionTmBefore.clear();
     if (_currentCycle == null) return;
     final cycleId = _currentCycle!.id!;
     final joints = await _db.getAllImmediateJointLogsForCycle(cycleId);
     _immediateJointLogs.addAll(joints);
     final decisions = await _db.getAllTransitionDecisionsForCycle(cycleId);
     _transitionDecisions.addAll(decisions);
+    final tmBefores = await _db.getAllTransitionTmBeforeForCycle(cycleId);
+    _transitionTmBefore.addAll(tmBefores);
   }
 
   // Get current week for a specific lift
@@ -228,6 +233,14 @@ class AppProvider extends ChangeNotifier {
     return _transitionDecisions.containsKey('${fromWeek}_${lift.dbKey}');
   }
 
+  String? getWeekTransitionDecision(int cycleId, int fromWeek, LiftType lift) {
+    return _transitionDecisions['${fromWeek}_${lift.dbKey}'];
+  }
+
+  double? getTransitionTmBefore(int fromWeek, LiftType lift) {
+    return _transitionTmBefore['${fromWeek}_${lift.dbKey}'];
+  }
+
   bool isLiftCompleteForWeek(LiftType lift, int week) {
     return _currentSessions.any(
         (s) => s.week == week && s.isComplete && s.liftKeys.contains(lift.dbKey));
@@ -235,26 +248,33 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> commitWeekTransition(
       int cycleId, int fromWeek, LiftType lift, String decision, int severity) async {
+    final key = '${fromWeek}_${lift.dbKey}';
     final date = DateTime.now().toIso8601String().substring(0, 10);
-    await _db.insertWeekTransitionDecision(
-        cycleId, fromWeek, lift.dbKey, decision, severity, date);
-    _transitionDecisions['${fromWeek}_${lift.dbKey}'] = decision;
 
-    // Apply TM change immediately
-    final currentTm = getTrainingMax(lift);
+    // Determine the TM to use as baseline.
+    // On first commit: use current TM (and store it as tm_before).
+    // On edit: revert to the original tm_before, then apply new decision.
+    final isEdit = _transitionDecisions.containsKey(key);
+    final tmBefore = isEdit
+        ? (_transitionTmBefore[key] ?? getTrainingMax(lift))
+        : getTrainingMax(lift);
+
+    await _db.upsertWeekTransitionDecision(
+        cycleId, fromWeek, lift.dbKey, decision, severity, tmBefore, date);
+    _transitionDecisions[key] = decision;
+    _transitionTmBefore[key] = tmBefore;
+
+    // Revert old TM change if editing, then apply new decision from tmBefore
     double newTm;
     if (decision == 'progress') {
-      newTm = WendlerCalculator.roundToNearest2_5(currentTm + lift.tmIncrement);
+      newTm = WendlerCalculator.roundToNearest2_5(tmBefore + lift.tmIncrement);
     } else if (decision == 'reduce') {
-      newTm = WendlerCalculator.roundToNearest2_5(currentTm * 0.95);
+      newTm = WendlerCalculator.roundToNearest2_5(tmBefore * 0.95);
     } else {
-      newTm = currentTm; // hold
+      newTm = tmBefore; // hold
     }
-    if (newTm != currentTm) {
-      await updateTrainingMax(lift, newTm);
-    } else {
-      notifyListeners();
-    }
+
+    await updateTrainingMax(lift, newTm);
   }
 
   // Session management — create a new ad-hoc session with the chosen lifts

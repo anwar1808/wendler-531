@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -519,9 +519,17 @@ class DatabaseHelper {
             lift TEXT NOT NULL,
             decision TEXT NOT NULL,
             severity INTEGER NOT NULL,
+            tm_before REAL NOT NULL DEFAULT 0,
             date TEXT NOT NULL
           )
         ''');
+      } catch (_) {}
+    }
+    if (oldVersion < 6) {
+      // Add tm_before column to existing week_transition_decisions table
+      try {
+        await db.execute(
+            'ALTER TABLE week_transition_decisions ADD COLUMN tm_before REAL NOT NULL DEFAULT 0');
       } catch (_) {}
     }
   }
@@ -830,29 +838,24 @@ class DatabaseHelper {
   }
 
   // Week transition decisions
-  Future<void> insertWeekTransitionDecision(
-      int cycleId, int fromWeek, String lift, String decision, int severity, String date) async {
+  Future<void> upsertWeekTransitionDecision(int cycleId, int fromWeek, String lift,
+      String decision, int severity, double tmBefore, String date) async {
     final db = await database;
+    // Delete any existing decision for this cycle/week/lift first
+    await db.delete(
+      'week_transition_decisions',
+      where: 'cycle_id = ? AND from_week = ? AND lift = ?',
+      whereArgs: [cycleId, fromWeek, lift],
+    );
     await db.insert('week_transition_decisions', {
       'cycle_id': cycleId,
       'from_week': fromWeek,
       'lift': lift,
       'decision': decision,
       'severity': severity,
+      'tm_before': tmBefore,
       'date': date,
     });
-  }
-
-  Future<String?> getWeekTransitionDecision(int cycleId, int fromWeek, String lift) async {
-    final db = await database;
-    final rows = await db.query(
-      'week_transition_decisions',
-      where: 'cycle_id = ? AND from_week = ? AND lift = ?',
-      whereArgs: [cycleId, fromWeek, lift],
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    return rows.first['decision'] as String;
   }
 
   Future<Map<String, String>> getAllTransitionDecisionsForCycle(int cycleId) async {
@@ -866,6 +869,21 @@ class DatabaseHelper {
     for (final row in rows) {
       final key = '${row['from_week']}_${row['lift']}';
       result[key] = row['decision'] as String;
+    }
+    return result;
+  }
+
+  Future<Map<String, double>> getAllTransitionTmBeforeForCycle(int cycleId) async {
+    final db = await database;
+    final rows = await db.query(
+      'week_transition_decisions',
+      where: 'cycle_id = ?',
+      whereArgs: [cycleId],
+    );
+    final result = <String, double>{};
+    for (final row in rows) {
+      final key = '${row['from_week']}_${row['lift']}';
+      result[key] = (row['tm_before'] as num).toDouble();
     }
     return result;
   }

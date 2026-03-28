@@ -97,11 +97,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                   child: Column(
                     children: [
-                      // Persistent joint transition banner (weeks 2–4)
+                      // Joint transition banner (weeks 2–4)
                       if (widget.week > 1 &&
-                          provider.isLiftCompleteForWeek(widget.liftType, widget.week - 1) &&
-                          !provider.hasWeekTransitionDecision(
-                              widget.cycleId, widget.week - 1, widget.liftType))
+                          provider.isLiftCompleteForWeek(widget.liftType, widget.week - 1))
                         _JointTransitionBanner(
                           liftType: widget.liftType,
                           cycleId: widget.cycleId,
@@ -676,6 +674,7 @@ class _JointTransitionBanner extends StatefulWidget {
 class _JointTransitionBannerState extends State<_JointTransitionBanner> {
   late int _severity;
   bool _committing = false;
+  bool _editing = false;
 
   static const _labels = ['None', 'Slight', 'Mild', 'Moderate', 'Painful'];
 
@@ -703,13 +702,89 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
     setState(() => _committing = true);
     await widget.provider.commitWeekTransition(
         widget.cycleId, widget.fromWeek, widget.liftType, decision, _severity);
+    setState(() {
+      _committing = false;
+      _editing = false;
+    });
+  }
+
+  static String _decisionLabel(String d) =>
+      d[0].toUpperCase() + d.substring(1);
+
+  static Color _decisionColor(String d) {
+    if (d == 'progress') return AppTheme.success;
+    if (d == 'reduce') return Colors.redAccent;
+    return AppTheme.accent;
   }
 
   @override
   Widget build(BuildContext context) {
+    final existingDecision = widget.provider
+        .getWeekTransitionDecision(widget.cycleId, widget.fromWeek, widget.liftType);
+    final isCommitted = existingDecision != null && !_editing;
+
+    // Committed (non-editing) state — compact row
+    if (isCommitted) {
+      final tm = widget.provider.getTrainingMax(widget.liftType);
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: _decisionColor(existingDecision).withValues(alpha: 0.4),
+              width: 1.5),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.monitor_heart_outlined,
+                size: 15, color: AppTheme.textSecondary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 13),
+                  children: [
+                    TextSpan(
+                      text: _decisionLabel(existingDecision),
+                      style: TextStyle(
+                        color: _decisionColor(existingDecision),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TextSpan(
+                      text:
+                          ' — TM ${WendlerCalculator.formatWeight(tm)} kg',
+                      style: const TextStyle(color: AppTheme.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _editing = true),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.accent,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(40, 32),
+              ),
+              child: const Text('Edit', style: TextStyle(fontSize: 13)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Full banner — first time or editing
     final tm = widget.provider.getTrainingMax(widget.liftType);
-    final progressedTm = _progressedTm(tm);
-    final reducedTm = _reducedTm(tm);
+    // When editing, base the shown values off the stored tm_before so user
+    // sees what the options will actually produce.
+    final baseTm = _editing
+        ? (widget.provider.getTransitionTmBefore(widget.fromWeek, widget.liftType) ?? tm)
+        : tm;
+    final progressedTm = _progressedTm(baseTm);
+    final reducedTm = _reducedTm(baseTm);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -728,7 +803,9 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
                   size: 16, color: AppTheme.accent),
               const SizedBox(width: 6),
               Text(
-                'JOINT CHECK-IN — WEEK ${widget.fromWeek + 1}',
+                _editing
+                    ? 'EDIT DECISION — WEEK ${widget.fromWeek + 1}'
+                    : 'JOINT CHECK-IN — WEEK ${widget.fromWeek + 1}',
                 style: const TextStyle(
                   color: AppTheme.accent,
                   fontSize: 11,
@@ -736,6 +813,18 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
                   letterSpacing: 1.2,
                 ),
               ),
+              if (_editing) ...[
+                const Spacer(),
+                TextButton(
+                  onPressed: () => setState(() => _editing = false),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.textSecondary,
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(40, 24),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 12)),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -753,7 +842,6 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 10),
-          // Severity chips
           Wrap(
             spacing: 6,
             children: List.generate(5, (i) {
@@ -788,7 +876,6 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
             }),
           ),
           const SizedBox(height: 16),
-          // Progress / Hold / Reduce buttons
           Row(
             children: [
               _DecisionButton(
@@ -802,7 +889,7 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
               const SizedBox(width: 6),
               _DecisionButton(
                 label: 'Hold',
-                subLabel: '${WendlerCalculator.formatWeight(tm)} kg',
+                subLabel: '${WendlerCalculator.formatWeight(baseTm)} kg',
                 isSuggested: _suggestion == 'hold',
                 isDisabled: _committing,
                 color: AppTheme.accent,
@@ -819,18 +906,17 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
               ),
             ],
           ),
-          if (_suggestion != 'hold')
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Suggested: ${_suggestion[0].toUpperCase()}${_suggestion.substring(1)}',
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 11,
-                  fontStyle: FontStyle.italic,
-                ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Suggested: ${_decisionLabel(_suggestion)}',
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+                fontStyle: FontStyle.italic,
               ),
             ),
+          ),
         ],
       ),
     );
