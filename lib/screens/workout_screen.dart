@@ -95,7 +95,20 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                  child: Card(
+                  child: Column(
+                    children: [
+                      // Persistent joint transition banner (weeks 2–4)
+                      if (widget.week > 1 &&
+                          provider.isLiftCompleteForWeek(widget.liftType, widget.week - 1) &&
+                          !provider.hasWeekTransitionDecision(
+                              widget.cycleId, widget.week - 1, widget.liftType))
+                        _JointTransitionBanner(
+                          liftType: widget.liftType,
+                          cycleId: widget.cycleId,
+                          fromWeek: widget.week - 1,
+                          provider: provider,
+                        ),
+                      Card(
                     margin: EdgeInsets.zero,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -260,6 +273,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                         ],
                       ),
                     ),
+                  ),
+                    ],
                   ),
                 ),
               ),
@@ -499,7 +514,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 );
                 final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
                 if (ctx.mounted) {
-                  Navigator.pop(ctx); // close dialog
+                  Navigator.pop(ctx); // close score dialog
+                }
+                if (context.mounted) {
+                  await _showJointCheckInDialog(context, provider);
                 }
                 if (context.mounted) {
                   Navigator.of(context).pop(); // return to week screen
@@ -517,6 +535,91 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             child: const Text('Save'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _showJointCheckInDialog(
+      BuildContext context, AppProvider provider) async {
+    int selectedSeverity = 1;
+    const labels = ['None', 'Slight', 'Mild', 'Moderate', 'Painful'];
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppTheme.card,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Joint Check-In',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'How do your joints feel after ${widget.liftType.displayName}?',
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              ...List.generate(5, (i) {
+                final severity = i + 1;
+                final selected = selectedSeverity == severity;
+                return InkWell(
+                  onTap: () => setDialogState(() => selectedSeverity = severity),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Radio<int>(
+                          value: severity,
+                          groupValue: selectedSeverity,
+                          onChanged: (v) =>
+                              setDialogState(() => selectedSeverity = v!),
+                          activeColor: AppTheme.accent,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$severity — ${labels[i]}',
+                          style: TextStyle(
+                            color: selected
+                                ? AppTheme.textPrimary
+                                : AppTheme.textSecondary,
+                            fontSize: 15,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Skip'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await provider.logImmediateJointFeedback(
+                    widget.cycleId, widget.week, widget.liftType, selectedSeverity);
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -544,6 +647,252 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             child: const Text('OK'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Joint transition banner — persistent until user commits a decision
+// ---------------------------------------------------------------------------
+
+class _JointTransitionBanner extends StatefulWidget {
+  final LiftType liftType;
+  final int cycleId;
+  final int fromWeek;
+  final AppProvider provider;
+
+  const _JointTransitionBanner({
+    required this.liftType,
+    required this.cycleId,
+    required this.fromWeek,
+    required this.provider,
+  });
+
+  @override
+  State<_JointTransitionBanner> createState() => _JointTransitionBannerState();
+}
+
+class _JointTransitionBannerState extends State<_JointTransitionBanner> {
+  late int _severity;
+  bool _committing = false;
+
+  static const _labels = ['None', 'Slight', 'Mild', 'Moderate', 'Painful'];
+
+  @override
+  void initState() {
+    super.initState();
+    _severity =
+        widget.provider.getImmediateJointSeverity(
+            widget.cycleId, widget.fromWeek, widget.liftType) ??
+        1;
+  }
+
+  String get _suggestion {
+    if (_severity <= 2) return 'progress';
+    if (_severity == 3) return 'hold';
+    return 'reduce';
+  }
+
+  double _progressedTm(double tm) =>
+      WendlerCalculator.roundToNearest2_5(tm + widget.liftType.tmIncrement);
+  double _reducedTm(double tm) =>
+      WendlerCalculator.roundToNearest2_5(tm * 0.95);
+
+  Future<void> _commit(String decision) async {
+    setState(() => _committing = true);
+    await widget.provider.commitWeekTransition(
+        widget.cycleId, widget.fromWeek, widget.liftType, decision, _severity);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tm = widget.provider.getTrainingMax(widget.liftType);
+    final progressedTm = _progressedTm(tm);
+    final reducedTm = _reducedTm(tm);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.monitor_heart_outlined,
+                  size: 16, color: AppTheme.accent),
+              const SizedBox(width: 6),
+              Text(
+                'JOINT CHECK-IN — WEEK ${widget.fromWeek + 1}',
+                style: const TextStyle(
+                  color: AppTheme.accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Current ${widget.liftType.displayName} TM: ${WendlerCalculator.formatWeight(tm)} kg',
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'How did your joints feel after last week?',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          // Severity chips
+          Wrap(
+            spacing: 6,
+            children: List.generate(5, (i) {
+              final sev = i + 1;
+              final selected = _severity == sev;
+              return GestureDetector(
+                onTap: () => setState(() => _severity = sev),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppTheme.accent.withValues(alpha: 0.15)
+                        : Colors.transparent,
+                    border: Border.all(
+                      color: selected ? AppTheme.accent : AppTheme.textSecondary,
+                      width: 1.5,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$sev ${_labels[i]}',
+                    style: TextStyle(
+                      color: selected ? AppTheme.accent : AppTheme.textSecondary,
+                      fontSize: 12,
+                      fontWeight:
+                          selected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 16),
+          // Progress / Hold / Reduce buttons
+          Row(
+            children: [
+              _DecisionButton(
+                label: 'Progress',
+                subLabel: '→ ${WendlerCalculator.formatWeight(progressedTm)} kg',
+                isSuggested: _suggestion == 'progress',
+                isDisabled: _committing,
+                color: AppTheme.success,
+                onTap: () => _commit('progress'),
+              ),
+              const SizedBox(width: 6),
+              _DecisionButton(
+                label: 'Hold',
+                subLabel: '${WendlerCalculator.formatWeight(tm)} kg',
+                isSuggested: _suggestion == 'hold',
+                isDisabled: _committing,
+                color: AppTheme.accent,
+                onTap: () => _commit('hold'),
+              ),
+              const SizedBox(width: 6),
+              _DecisionButton(
+                label: 'Reduce',
+                subLabel: '→ ${WendlerCalculator.formatWeight(reducedTm)} kg',
+                isSuggested: _suggestion == 'reduce',
+                isDisabled: _committing,
+                color: Colors.redAccent,
+                onTap: () => _commit('reduce'),
+              ),
+            ],
+          ),
+          if (_suggestion != 'hold')
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Suggested: ${_suggestion[0].toUpperCase()}${_suggestion.substring(1)}',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DecisionButton extends StatelessWidget {
+  final String label;
+  final String subLabel;
+  final bool isSuggested;
+  final bool isDisabled;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _DecisionButton({
+    required this.label,
+    required this.subLabel,
+    required this.isSuggested,
+    required this.isDisabled,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: isDisabled ? null : onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSuggested ? color.withValues(alpha: 0.15) : Colors.transparent,
+            border: Border.all(
+              color: isSuggested ? color : AppTheme.textSecondary.withValues(alpha: 0.4),
+              width: isSuggested ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSuggested ? color : AppTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: isSuggested ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subLabel,
+                style: TextStyle(
+                  color: isSuggested
+                      ? color.withValues(alpha: 0.8)
+                      : AppTheme.textSecondary.withValues(alpha: 0.6),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

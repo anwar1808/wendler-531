@@ -23,6 +23,10 @@ class AppProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _bodyweightEntries = [];
   // zone2 minutes per week cache: key = "cycleId_weekNum"
   final Map<String, int> _zone2Cache = {};
+  // Joint log cache: key = "weekNum_liftKey" → severity (1-5), immediate post-workout only
+  final Map<String, int> _immediateJointLogs = {};
+  // Transition decision cache: key = "fromWeek_liftKey" → decision string
+  final Map<String, String> _transitionDecisions = {};
   int _restTimerSeconds = 180;
   bool _isLoading = true;
 
@@ -57,6 +61,7 @@ class AppProvider extends ChangeNotifier {
     await _loadLiftWeeks();
     await _loadBodyweightEntries();
     await _loadZone2Cache();
+    await _loadJointCaches();
 
     _isLoading = false;
     notifyListeners();
@@ -168,6 +173,17 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadJointCaches() async {
+    _immediateJointLogs.clear();
+    _transitionDecisions.clear();
+    if (_currentCycle == null) return;
+    final cycleId = _currentCycle!.id!;
+    final joints = await _db.getAllImmediateJointLogsForCycle(cycleId);
+    _immediateJointLogs.addAll(joints);
+    final decisions = await _db.getAllTransitionDecisionsForCycle(cycleId);
+    _transitionDecisions.addAll(decisions);
+  }
+
   // Get current week for a specific lift
   int getLiftWeek(LiftType lift) {
     return _liftWeeks[lift.dbKey] ?? 1;
@@ -193,6 +209,52 @@ class AppProvider extends ChangeNotifier {
     await _db.upsertTrainingMax(tm);
     _trainingMaxes[lift.dbKey] = value;
     notifyListeners();
+  }
+
+  // Joint feedback & week transition decisions
+  Future<void> logImmediateJointFeedback(
+      int cycleId, int week, LiftType lift, int severity) async {
+    final date = DateTime.now().toIso8601String().substring(0, 10);
+    await _db.insertJointLog(cycleId, week, lift.dbKey, severity, true, date);
+    _immediateJointLogs['${week}_${lift.dbKey}'] = severity;
+    notifyListeners();
+  }
+
+  int? getImmediateJointSeverity(int cycleId, int week, LiftType lift) {
+    return _immediateJointLogs['${week}_${lift.dbKey}'];
+  }
+
+  bool hasWeekTransitionDecision(int cycleId, int fromWeek, LiftType lift) {
+    return _transitionDecisions.containsKey('${fromWeek}_${lift.dbKey}');
+  }
+
+  bool isLiftCompleteForWeek(LiftType lift, int week) {
+    return _currentSessions.any(
+        (s) => s.week == week && s.isComplete && s.liftKeys.contains(lift.dbKey));
+  }
+
+  Future<void> commitWeekTransition(
+      int cycleId, int fromWeek, LiftType lift, String decision, int severity) async {
+    final date = DateTime.now().toIso8601String().substring(0, 10);
+    await _db.insertWeekTransitionDecision(
+        cycleId, fromWeek, lift.dbKey, decision, severity, date);
+    _transitionDecisions['${fromWeek}_${lift.dbKey}'] = decision;
+
+    // Apply TM change immediately
+    final currentTm = getTrainingMax(lift);
+    double newTm;
+    if (decision == 'progress') {
+      newTm = WendlerCalculator.roundToNearest2_5(currentTm + lift.tmIncrement);
+    } else if (decision == 'reduce') {
+      newTm = WendlerCalculator.roundToNearest2_5(currentTm * 0.95);
+    } else {
+      newTm = currentTm; // hold
+    }
+    if (newTm != currentTm) {
+      await updateTrainingMax(lift, newTm);
+    } else {
+      notifyListeners();
+    }
   }
 
   // Session management — create a new ad-hoc session with the chosen lifts
@@ -609,6 +671,7 @@ class AppProvider extends ChangeNotifier {
     await _loadHistory();
     await _loadLiftWeeks();
     await _loadBodyweightEntries();
+    await _loadJointCaches();
     notifyListeners();
   }
 }

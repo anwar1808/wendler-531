@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -110,6 +110,30 @@ class DatabaseHelper {
         cycle_id INTEGER NOT NULL,
         week_number INTEGER NOT NULL,
         minutes INTEGER NOT NULL,
+        date TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE joint_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id INTEGER NOT NULL,
+        week_num INTEGER NOT NULL,
+        lift TEXT NOT NULL,
+        severity INTEGER NOT NULL,
+        is_immediate INTEGER NOT NULL DEFAULT 1,
+        date TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE week_transition_decisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id INTEGER NOT NULL,
+        from_week INTEGER NOT NULL,
+        lift TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        severity INTEGER NOT NULL,
         date TEXT NOT NULL
       )
     ''');
@@ -472,6 +496,34 @@ class DatabaseHelper {
         ''');
       } catch (_) {}
     }
+    if (oldVersion < 5) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS joint_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cycle_id INTEGER NOT NULL,
+            week_num INTEGER NOT NULL,
+            lift TEXT NOT NULL,
+            severity INTEGER NOT NULL,
+            is_immediate INTEGER NOT NULL DEFAULT 1,
+            date TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS week_transition_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cycle_id INTEGER NOT NULL,
+            from_week INTEGER NOT NULL,
+            lift TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            severity INTEGER NOT NULL,
+            date TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+    }
   }
 
   // Training Maxes
@@ -748,5 +800,88 @@ class DatabaseHelper {
       where: 'is_imported = 1',
       orderBy: 'date DESC',
     );
+  }
+
+  // Joint logs
+  Future<void> insertJointLog(
+      int cycleId, int weekNum, String lift, int severity, bool isImmediate, String date) async {
+    final db = await database;
+    await db.insert('joint_logs', {
+      'cycle_id': cycleId,
+      'week_num': weekNum,
+      'lift': lift,
+      'severity': severity,
+      'is_immediate': isImmediate ? 1 : 0,
+      'date': date,
+    });
+  }
+
+  Future<int?> getImmediateJointSeverity(int cycleId, int weekNum, String lift) async {
+    final db = await database;
+    final rows = await db.query(
+      'joint_logs',
+      where: 'cycle_id = ? AND week_num = ? AND lift = ? AND is_immediate = 1',
+      whereArgs: [cycleId, weekNum, lift],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['severity'] as int;
+  }
+
+  // Week transition decisions
+  Future<void> insertWeekTransitionDecision(
+      int cycleId, int fromWeek, String lift, String decision, int severity, String date) async {
+    final db = await database;
+    await db.insert('week_transition_decisions', {
+      'cycle_id': cycleId,
+      'from_week': fromWeek,
+      'lift': lift,
+      'decision': decision,
+      'severity': severity,
+      'date': date,
+    });
+  }
+
+  Future<String?> getWeekTransitionDecision(int cycleId, int fromWeek, String lift) async {
+    final db = await database;
+    final rows = await db.query(
+      'week_transition_decisions',
+      where: 'cycle_id = ? AND from_week = ? AND lift = ?',
+      whereArgs: [cycleId, fromWeek, lift],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['decision'] as String;
+  }
+
+  Future<Map<String, String>> getAllTransitionDecisionsForCycle(int cycleId) async {
+    final db = await database;
+    final rows = await db.query(
+      'week_transition_decisions',
+      where: 'cycle_id = ?',
+      whereArgs: [cycleId],
+    );
+    final result = <String, String>{};
+    for (final row in rows) {
+      final key = '${row['from_week']}_${row['lift']}';
+      result[key] = row['decision'] as String;
+    }
+    return result;
+  }
+
+  Future<Map<String, int>> getAllImmediateJointLogsForCycle(int cycleId) async {
+    final db = await database;
+    final rows = await db.query(
+      'joint_logs',
+      where: 'cycle_id = ? AND is_immediate = 1',
+      whereArgs: [cycleId],
+    );
+    final result = <String, int>{};
+    for (final row in rows) {
+      final key = '${row['week_num']}_${row['lift']}';
+      result[key] = row['severity'] as int;
+    }
+    return result;
   }
 }

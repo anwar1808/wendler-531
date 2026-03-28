@@ -23,8 +23,9 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Wendler Log'),
+        titleSpacing: 0,
         leading: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.fromLTRB(20, 14, 2, 14),
           child: Image.asset('assets/skeleton_nav.png', color: AppTheme.accent),
         ),
       ),
