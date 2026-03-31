@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -530,6 +530,37 @@ class DatabaseHelper {
       try {
         await db.execute(
             'ALTER TABLE week_transition_decisions ADD COLUMN tm_before REAL NOT NULL DEFAULT 0');
+      } catch (_) {}
+    }
+    if (oldVersion < 7) {
+      // Migrate notes from history_entries → sessions for app-logged entries.
+      // For each non-imported history entry with non-empty notes, find the
+      // matching session (same date, same lift) and copy the notes across if
+      // the session notes are currently empty.
+      try {
+        final entries = await db.query(
+          'history_entries',
+          where: 'is_imported = 0 AND notes != ""',
+        );
+        for (final e in entries) {
+          final date = e['date'] as String;
+          final lift = e['lift'] as String;
+          final notes = e['notes'] as String;
+          // Find sessions on that date that include this lift and have empty notes
+          final sessions = await db.query(
+            'sessions',
+            where: 'date = ? AND notes = "" AND lifts LIKE ?',
+            whereArgs: [date, '%$lift%'],
+          );
+          for (final s in sessions) {
+            await db.update(
+              'sessions',
+              {'notes': notes},
+              where: 'id = ?',
+              whereArgs: [s['id']],
+            );
+          }
+        }
       } catch (_) {}
     }
   }

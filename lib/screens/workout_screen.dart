@@ -59,6 +59,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     final tm = provider.getTrainingMax(widget.liftType);
     final allTimeRecord = _getAllTimePR(provider);
     final lastSessionEntry = _getLastSessionEntry(provider);
+    final lastSessionNotes = provider.getLastSessionNotesForLift(widget.liftType);
 
     // Calculate weights
     final warmupSets = _getWarmupSets(tm);
@@ -235,7 +236,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                           ),
 
                           // Session notes (shown when this workout has been logged)
-                          if (widget.isAlreadyComplete && lastSessionEntry != null && lastSessionEntry.notes.isNotEmpty) ...[
+                          if (widget.isAlreadyComplete && lastSessionNotes.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             Container(
                               width: double.infinity,
@@ -259,7 +260,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    lastSessionEntry.notes,
+                                    lastSessionNotes,
                                     style: const TextStyle(
                                       color: AppTheme.textPrimary,
                                       fontSize: 13,

@@ -473,7 +473,8 @@ class AppProvider extends ChangeNotifier {
       );
     }
 
-    // Insert history entry (not imported — so beat-last hint picks it up)
+    // Insert history entry (not imported — so beat-last hint picks it up).
+    // Notes live on the session record only; history_entries.notes stays empty.
     final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
     await _db.insertHistoryEntry(HistoryEntry(
       date: today,
@@ -481,7 +482,6 @@ class AppProvider extends ChangeNotifier {
       weightKg: amrapWeight,
       reps: reps,
       oneRm: oneRm,
-      notes: notes,
       isImported: false,
     ));
     await _loadHistory();
@@ -723,6 +723,22 @@ class AppProvider extends ChangeNotifier {
     _restTimer?.cancel();
     _timerActive = false;
     notifyListeners();
+  }
+
+  // Get notes from the most recent completed session that included a given lift.
+  // Falls back to history_entries.notes for pre-migration data.
+  String getLastSessionNotesForLift(LiftType lift) {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final session = _completedSessions
+        .where((s) => s.liftKeys.contains(lift.dbKey) && s.date.compareTo(today) <= 0 && s.notes.isNotEmpty)
+        .firstOrNull;
+    if (session != null) return session.notes;
+    // Pre-migration fallback: check history_entries.notes
+    final past = _historyEntries
+        .where((e) => e.lift == lift.dbKey && !e.isImported && e.date.compareTo(today) <= 0 && e.notes.isNotEmpty)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return past.isEmpty ? '' : past.first.notes;
   }
 
   // Fetch set logs for any session (including completed ones from past cycles)
