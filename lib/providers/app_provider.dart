@@ -279,7 +279,7 @@ class AppProvider extends ChangeNotifier {
     _transitionDecisions[key] = decision;
     _transitionTmBefore[key] = tmBefore;
 
-    // Revert old TM change if editing, then apply new decision from tmBefore
+    // Apply TM change
     double newTm;
     if (decision == 'progress') {
       newTm = WendlerCalculator.roundToNearest2_5(tmBefore + lift.tmIncrement);
@@ -288,8 +288,15 @@ class AppProvider extends ChangeNotifier {
     } else {
       newTm = tmBefore; // hold
     }
-
     await updateTrainingMax(lift, newTm);
+
+    // Apply week: hold = repeat fromWeek (unless deload week 4); progress/reduce = stay on fromWeek+1
+    final targetWeek = (decision == 'hold' && fromWeek != 4)
+        ? fromWeek
+        : (fromWeek == 4 ? 1 : fromWeek + 1);
+    await _db.setLiftWeek(lift.dbKey, targetWeek);
+    _liftWeeks[lift.dbKey] = targetWeek;
+    notifyListeners();
   }
 
   // Session management — create a new ad-hoc session with the chosen lifts
