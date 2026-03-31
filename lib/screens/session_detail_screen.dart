@@ -39,7 +39,29 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
   Future<void> _loadSetLogs() async {
     final provider = context.read<AppProvider>();
     final logs = await provider.fetchSetLogsForCompletedSession(widget.session.id!);
+
+    // If session.notes is empty, recover notes from history_entries (WorkoutScreen
+    // used to only save notes there, not on the session record).
+    String resolvedNotes = widget.session.notes;
+    if (resolvedNotes.isEmpty) {
+      final liftKeys = widget.session.liftKeys;
+      final allHistory = provider.historyEntries;
+      final parts = <String>[];
+      for (final key in liftKeys) {
+        final entry = allHistory
+            .where((e) => e.lift == key && e.date == widget.session.date && e.notes.isNotEmpty)
+            .firstOrNull;
+        if (entry != null) parts.add(entry.notes);
+      }
+      if (parts.isNotEmpty) {
+        resolvedNotes = parts.join('\n');
+        // Persist so future opens don't need to recover again
+        await provider.updateSessionNotes(widget.session, resolvedNotes);
+      }
+    }
+
     if (mounted) {
+      _notesController.text = resolvedNotes;
       setState(() {
         _setLogs = logs;
         _loading = false;
