@@ -7,6 +7,7 @@ import '../models/lift_type.dart';
 import '../services/wendler_calculator.dart';
 import '../theme/app_theme.dart';
 import 'historical_data_screen.dart';
+import 'session_detail_screen.dart';
 
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
@@ -54,7 +55,13 @@ class _SessionHistoryTile extends StatelessWidget {
     final weekLabel = session.week == 4 ? 'Deload' : 'Week ${session.week}';
 
     return Card(
-      child: GestureDetector(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SessionDetailScreen(session: session),
+          ),
+        ),
         onLongPress: () => _confirmDelete(context, provider),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -96,6 +103,7 @@ class _SessionHistoryTile extends StatelessWidget {
                   ],
                 ),
               ),
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary, size: 20),
             ],
           ),
         ),

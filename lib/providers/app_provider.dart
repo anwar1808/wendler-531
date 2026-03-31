@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
@@ -32,6 +33,14 @@ class AppProvider extends ChangeNotifier {
   int _restTimerSeconds = 180;
   bool _isLoading = true;
 
+  // Persistent rest timer
+  Timer? _restTimer;
+  bool _timerActive = false;
+  int _timerRemaining = 0;
+  int _timerDuration = 0;
+  String _timerLiftName = '';
+  String? _timerNextSet;
+
   // Per-lift week tracking: each lift tracks its own week (1-4)
   Map<String, int> _liftWeeks = {};
 
@@ -46,6 +55,12 @@ class AppProvider extends ChangeNotifier {
   int get restTimerSeconds => _restTimerSeconds;
   bool get isLoading => _isLoading;
   Map<String, int> get liftWeeks => _liftWeeks;
+
+  bool get timerActive => _timerActive;
+  int get timerRemaining => _timerRemaining;
+  int get timerDuration => _timerDuration;
+  String get timerLiftName => _timerLiftName;
+  String? get timerNextSet => _timerNextSet;
 
   Future<void> initialize() async {
     _isLoading = true;
@@ -680,6 +695,39 @@ class AppProvider extends ChangeNotifier {
     final sessions = getSessionsForWeek(week);
     final liftsCompleted = sessions.where((s) => s.isComplete).length.clamp(0, 4);
     return ((liftsCompleted / 4) * 100).clamp(0, 100).round();
+  }
+
+  // Persistent rest timer
+  void startRestTimer(String liftName, String? nextSet) {
+    _restTimer?.cancel();
+    _timerActive = true;
+    _timerDuration = _restTimerSeconds;
+    _timerRemaining = _restTimerSeconds;
+    _timerLiftName = liftName;
+    _timerNextSet = nextSet;
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_timerRemaining <= 1) {
+        timer.cancel();
+        _timerActive = false;
+        _timerRemaining = 0;
+        notifyListeners();
+      } else {
+        _timerRemaining--;
+        notifyListeners();
+      }
+    });
+    notifyListeners();
+  }
+
+  void stopRestTimer() {
+    _restTimer?.cancel();
+    _timerActive = false;
+    notifyListeners();
+  }
+
+  // Fetch set logs for any session (including completed ones from past cycles)
+  Future<List<SetLogModel>> fetchSetLogsForCompletedSession(int sessionId) async {
+    return await _db.getSetLogsForSession(sessionId);
   }
 
   // Reload everything

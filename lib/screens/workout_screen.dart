@@ -6,6 +6,7 @@ import '../models/lift_type.dart';
 import '../models/history_entry.dart';
 import '../providers/app_provider.dart';
 import '../services/wendler_calculator.dart';
+import '../services/plate_calculator.dart';
 import '../theme/app_theme.dart';
 import '../widgets/rest_timer_widget.dart';
 
@@ -30,7 +31,6 @@ class WorkoutScreen extends StatefulWidget {
 class _WorkoutScreenState extends State<WorkoutScreen> {
   // Track which items are checked off
   final Set<int> _checkedItems = {};
-  bool _restTimerVisible = false;
   bool _initialized = false;
 
   // Step indices
@@ -57,7 +57,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
     final tm = provider.getTrainingMax(widget.liftType);
-    final restSeconds = provider.restTimerSeconds;
     final allTimeRecord = _getAllTimePR(provider);
     final lastSessionEntry = _getLastSessionEntry(provider);
 
@@ -154,6 +153,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               title:
                                   '${workSets[0].reps} reps at ${WendlerCalculator.formatWeight(workSets[0].weight)}',
                               subtitle: _setSubtitle(widget.week, 1),
+                              plateInfo: PlateCalculator.formatPlates(workSets[0].weight),
                             ),
                             const SizedBox(height: 8),
 
@@ -161,7 +161,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                             _CheckRow(
                               index: _idxRest1,
                               checked: _checkedItems.contains(_idxRest1),
-                              onToggle: () => _toggleRest(_idxRest1, restSeconds),
+                              onToggle: () => _toggleRest(_idxRest1),
                               title: 'Rest',
                               subtitle: 'Press to start rest timer',
                               isRest: true,
@@ -178,6 +178,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               title:
                                   '${workSets[1].reps} reps at ${WendlerCalculator.formatWeight(workSets[1].weight)}',
                               subtitle: _setSubtitle(widget.week, 2),
+                              plateInfo: PlateCalculator.formatPlates(workSets[1].weight),
                             ),
                             const SizedBox(height: 8),
 
@@ -185,7 +186,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                             _CheckRow(
                               index: _idxRest2,
                               checked: _checkedItems.contains(_idxRest2),
-                              onToggle: () => _toggleRest(_idxRest2, restSeconds),
+                              onToggle: () => _toggleRest(_idxRest2),
                               title: 'Rest',
                               subtitle: 'Press to start rest timer',
                               isRest: true,
@@ -202,6 +203,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               title:
                                   'AMRAP at ${WendlerCalculator.formatWeight(amrapWeight)}',
                               subtitle: _amrapSubtitle(widget.week),
+                              plateInfo: PlateCalculator.formatPlates(amrapWeight),
                               prHint: prHint,
                               beatLastHint: beatLastHint,
                             ),
@@ -279,8 +281,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             ],
           ),
 
-          // Rest timer overlay
-          if (_restTimerVisible)
+          // Rest timer overlay (driven by provider — persists across navigation)
+          if (provider.timerActive)
             Positioned(
               bottom: 72,
               left: 0,
@@ -288,11 +290,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: Material(
                 color: Colors.transparent,
                 child: RestTimerWidget(
-                  durationSeconds: restSeconds,
-                  liftName: widget.liftType.displayName,
-                  nextSetInfo: null,
-                  onDone: () => setState(() => _restTimerVisible = false),
-                  onSkip: () => setState(() => _restTimerVisible = false),
+                  durationSeconds: provider.timerDuration,
+                  remaining: provider.timerRemaining,
+                  liftName: provider.timerLiftName,
+                  nextSetInfo: provider.timerNextSet,
+                  onDone: provider.stopRestTimer,
+                  onSkip: provider.stopRestTimer,
                 ),
               ),
             ),
@@ -339,14 +342,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     });
   }
 
-  void _toggleRest(int idx, int restSeconds) {
+  void _toggleRest(int idx) {
+    final provider = context.read<AppProvider>();
     setState(() {
       if (_checkedItems.contains(idx)) {
         _checkedItems.remove(idx);
-        _restTimerVisible = false;
+        provider.stopRestTimer();
       } else {
         _checkedItems.add(idx);
-        _restTimerVisible = true;
+        provider.startRestTimer(widget.liftType.displayName, null);
       }
     });
   }
@@ -990,6 +994,7 @@ class _CheckRow extends StatelessWidget {
   final VoidCallback onToggle;
   final String title;
   final String subtitle;
+  final String? plateInfo;
   final String? prHint;
   final String? beatLastHint;
   final bool isRest;
@@ -1000,6 +1005,7 @@ class _CheckRow extends StatelessWidget {
     required this.onToggle,
     required this.title,
     required this.subtitle,
+    this.plateInfo,
     this.prHint,
     this.beatLastHint,
     this.isRest = false,
@@ -1048,6 +1054,16 @@ class _CheckRow extends StatelessWidget {
                       fontSize: 12,
                     ),
                   ),
+                  if (plateInfo != null && plateInfo!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      plateInfo!,
+                      style: const TextStyle(
+                        color: AppTheme.teal,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                   if (prHint != null) ...[
                     const SizedBox(height: 4),
                     Text(
