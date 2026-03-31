@@ -486,8 +486,8 @@ class AppProvider extends ChangeNotifier {
     ));
     await _loadHistory();
 
-    // Mark session complete
-    final updated = session.copyWith(isComplete: true);
+    // Mark session complete and persist notes on the session record
+    final updated = session.copyWith(isComplete: true, notes: notes);
     await _db.updateSession(updated);
 
     // Advance week for this lift only
