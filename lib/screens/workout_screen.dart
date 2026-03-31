@@ -707,6 +707,18 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
     setState(() => _committing = true);
     await widget.provider.commitWeekTransition(
         widget.cycleId, widget.fromWeek, widget.liftType, decision, _severity);
+    if (decision == 'hold' && widget.fromWeek != 4 && mounted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.liftType.displayName} will repeat Week ${widget.fromWeek}',
+          ),
+          backgroundColor: AppTheme.teal,
+        ),
+      );
+      return;
+    }
     setState(() {
       _committing = false;
       _editing = false;
