@@ -36,8 +36,8 @@ class _TmEditDialogState extends State<TmEditDialog> {
 
   void _validate() {
     final val = double.tryParse(_controller.text);
-    if (val == null || val <= 0) {
-      setState(() => _error = 'Enter a valid positive number');
+    if (val == null || val < 20) {
+      setState(() => _error = 'Minimum 20kg');
       return;
     }
     widget.onSave(val);

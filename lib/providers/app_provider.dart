@@ -269,9 +269,12 @@ class AppProvider extends ChangeNotifier {
     // Determine the TM to use as baseline.
     // On first commit: use current TM (and store it as tm_before).
     // On edit: revert to the original tm_before, then apply new decision.
+    // Guard: if stored tm_before is 0 (legacy default from pre-v6 migration),
+    // fall back to the live TM rather than propagating the zero.
     final isEdit = _transitionDecisions.containsKey(key);
-    final tmBefore = isEdit
-        ? (_transitionTmBefore[key] ?? getTrainingMax(lift))
+    final storedTm = isEdit ? _transitionTmBefore[key] : null;
+    final tmBefore = (storedTm != null && storedTm > 0)
+        ? storedTm
         : getTrainingMax(lift);
 
     await _db.upsertWeekTransitionDecision(

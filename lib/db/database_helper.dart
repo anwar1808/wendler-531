@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -560,6 +560,98 @@ class DatabaseHelper {
               whereArgs: [s['id']],
             );
           }
+        }
+      } catch (_) {}
+    }
+    if (oldVersion < 8) {
+      // Fix corrupted TMs caused by the tm_before=0 bug in commitWeekTransition.
+      // When an old transition decision had tm_before=0 (legacy default from the
+      // v6 ALTER TABLE migration), applying "progress" produced newTm = 0 + increment.
+      // Strategy: for each lift whose TM is suspiciously low (≤ 10kg), back-calculate
+      // the real TM from the AMRAP weight logged in the corresponding session, then
+      // re-apply the transition decision.
+      try {
+        // AMRAP set percentage per week
+        const amrapPctByWeek = {1: 0.85, 2: 0.90, 3: 0.95, 4: 0.60};
+        // TM increment per lift
+        const tmIncrements = {
+          'backSquat': 5.0,
+          'deadlift': 5.0,
+          'benchPress': 2.5,
+          'militaryPress': 2.5,
+        };
+
+        for (final liftEntry in tmIncrements.entries) {
+          final lift = liftEntry.key;
+          final increment = liftEntry.value;
+
+          final tmRows = await db.query('training_maxes',
+              where: 'lift = ?', whereArgs: [lift]);
+          if (tmRows.isEmpty) continue;
+          final currentTm = (tmRows.first['value_kg'] as num).toDouble();
+          if (currentTm > 10.0) continue; // not corrupted
+
+          // Find the latest transition decision with tm_before = 0 for this lift
+          final decRows = await db.query('week_transition_decisions',
+              where: 'lift = ? AND tm_before <= 0',
+              whereArgs: [lift],
+              orderBy: 'date DESC',
+              limit: 1);
+          if (decRows.isEmpty) continue;
+
+          final fromWeek = decRows.first['from_week'] as int;
+          final decision = decRows.first['decision'] as String;
+          final decId = decRows.first['id'] as int;
+
+          // Find the completed session for this week + lift
+          final sessRows = await db.query('sessions',
+              where: 'lifts LIKE ? AND week = ? AND is_complete = 1',
+              whereArgs: ['%$lift%', fromWeek],
+              orderBy: 'date DESC',
+              limit: 1);
+          if (sessRows.isEmpty) continue;
+
+          final sessDate = sessRows.first['date'] as String;
+
+          // Find the AMRAP history entry logged on that session date
+          final histRows = await db.query('history_entries',
+              where: 'lift = ? AND date = ? AND is_imported = 0',
+              whereArgs: [lift, sessDate],
+              limit: 1);
+          if (histRows.isEmpty) continue;
+
+          final amrapWeight = (histRows.first['weight_kg'] as num).toDouble();
+          final pct = amrapPctByWeek[fromWeek] ?? 0.85;
+
+          // Back-calculate the TM: find the 2.5kg-aligned value whose AMRAP
+          // weight (ceil(TM*pct/2.5)*2.5) equals the logged weight.
+          final approx = amrapWeight / pct;
+          final minC = ((approx - 10.0) / 2.5).floor() * 2.5;
+          final maxC = ((approx + 10.0) / 2.5).ceil() * 2.5;
+          double tmBefore = approx; // fallback
+          for (double c = minC; c <= maxC; c += 2.5) {
+            if (c <= 0) continue;
+            if (((c * pct / 2.5).ceil() * 2.5 - amrapWeight).abs() < 0.01) {
+              tmBefore = c;
+              break;
+            }
+          }
+
+          // Re-apply the decision to get the correct new TM
+          double newTm;
+          if (decision == 'progress') {
+            newTm = ((tmBefore + increment) / 2.5).ceil() * 2.5;
+          } else if (decision == 'reduce') {
+            newTm = ((tmBefore * 0.95) / 2.5).floor() * 2.5;
+          } else {
+            newTm = tmBefore; // hold
+          }
+
+          await db.update('training_maxes', {'value_kg': newTm},
+              where: 'lift = ?', whereArgs: [lift]);
+          // Also fix the stored tm_before so future edits use the correct baseline
+          await db.update('week_transition_decisions', {'tm_before': tmBefore},
+              where: 'id = ?', whereArgs: [decId]);
         }
       } catch (_) {}
     }
