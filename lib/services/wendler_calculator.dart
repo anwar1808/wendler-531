@@ -13,6 +13,11 @@ class WendlerCalculator {
     return (value / 2.5).ceil() * 2.5;
   }
 
+  // For TM reductions: floor so the decrease isn't swallowed by rounding up.
+  static double roundDownToNearest2_5(double value) {
+    return (value / 2.5).floor() * 2.5;
+  }
+
   static double calcTrainingMax(double oneRm) {
     return roundToNearest2_5(oneRm * 0.85);
   }

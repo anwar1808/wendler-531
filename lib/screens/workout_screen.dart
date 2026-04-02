@@ -701,7 +701,7 @@ class _JointTransitionBannerState extends State<_JointTransitionBanner> {
   double _progressedTm(double tm) =>
       WendlerCalculator.roundToNearest2_5(tm + widget.liftType.tmIncrement);
   double _reducedTm(double tm) =>
-      WendlerCalculator.roundToNearest2_5(tm * 0.95);
+      WendlerCalculator.roundDownToNearest2_5(tm * 0.95);
 
   Future<void> _commit(String decision) async {
     setState(() => _committing = true);

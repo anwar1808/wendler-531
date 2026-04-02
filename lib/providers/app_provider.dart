@@ -284,7 +284,7 @@ class AppProvider extends ChangeNotifier {
     if (decision == 'progress') {
       newTm = WendlerCalculator.roundToNearest2_5(tmBefore + lift.tmIncrement);
     } else if (decision == 'reduce') {
-      newTm = WendlerCalculator.roundToNearest2_5(tmBefore * 0.95);
+      newTm = WendlerCalculator.roundDownToNearest2_5(tmBefore * 0.95);
     } else {
       newTm = tmBefore; // hold
     }
