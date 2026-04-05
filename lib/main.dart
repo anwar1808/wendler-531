@@ -27,34 +27,6 @@ class Wendler531App extends StatelessWidget {
       title: 'Wendler Log',
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      // Global timer overlay: renders above ALL routes so it persists when the
-      // user navigates between screens. Suppressed on screens that show their
-      // own full RestTimerWidget (WorkoutScreen, SessionScreen).
-      builder: (ctx, child) {
-        return Consumer<AppProvider>(
-          builder: (_, provider, __) {
-            // Only show the compact bar when a screen without its own full
-            // RestTimerWidget overlay is on top (i.e. not WorkoutScreen/SessionScreen).
-            final showBar =
-                provider.timerActive && !provider.timerOverlayMounted;
-            return Stack(
-              children: [
-                child!,
-                if (showBar)
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: PersistentTimerBar(provider: provider),
-                    ),
-                  ),
-              ],
-            );
-          },
-        );
-      },
       home: const MainNav(),
     );
   }
@@ -79,10 +51,24 @@ class _MainNavState extends State<MainNav> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<AppProvider>();
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
+          // Compact timer bar shown above the bottom nav when a rest timer
+          // is active and the user is on a main tab.
+          if (provider.timerActive)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: PersistentTimerBar(provider: provider),
+            ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,

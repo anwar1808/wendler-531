@@ -7,6 +7,7 @@ import '../models/lift_type.dart';
 import '../providers/app_provider.dart';
 import '../services/wendler_calculator.dart';
 import '../theme/app_theme.dart';
+import '../widgets/persistent_timer_bar.dart';
 import 'session_screen.dart';
 import 'workout_screen.dart';
 
@@ -76,7 +77,7 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
         ),
         actions: const [],
       ),
-      body: Column(
+      body: Stack(children: [Column(
         children: [
           // Top navigation row: Previous / Next week
           Padding(
@@ -213,6 +214,14 @@ class _WeekSessionsScreenState extends State<WeekSessionsScreen> {
           ),
         ],
       ),
+        if (provider.timerActive)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: PersistentTimerBar(provider: provider),
+          ),
+      ]),
     );
   }
 
