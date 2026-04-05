@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../models/lift_type.dart';
@@ -10,7 +11,7 @@ import '../models/set_log_model.dart';
 import '../models/history_entry.dart';
 import '../services/wendler_calculator.dart';
 
-class AppProvider extends ChangeNotifier {
+class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   final DatabaseHelper _db = DatabaseHelper.instance;
 
   Map<String, double> _trainingMaxes = {};
@@ -40,6 +41,8 @@ class AppProvider extends ChangeNotifier {
   int _timerDuration = 0;
   String _timerLiftName = '';
   String? _timerNextSet;
+  // Absolute wall-clock end time — used to correct remaining after VM pause.
+  DateTime? _timerEndTime;
 
   // Per-lift week tracking: each lift tracks its own week (1-4)
   Map<String, int> _liftWeeks = {};
@@ -63,6 +66,7 @@ class AppProvider extends ChangeNotifier {
   String? get timerNextSet => _timerNextSet;
 
   Future<void> initialize() async {
+    WidgetsBinding.instance.addObserver(this);
     _isLoading = true;
     notifyListeners();
 
@@ -715,24 +719,40 @@ class AppProvider extends ChangeNotifier {
     _timerRemaining = _restTimerSeconds;
     _timerLiftName = liftName;
     _timerNextSet = nextSet;
-    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_timerRemaining <= 1) {
-        timer.cancel();
-        _timerActive = false;
-        _timerRemaining = 0;
-        notifyListeners();
-      } else {
-        _timerRemaining--;
-        notifyListeners();
-      }
-    });
+    _timerEndTime = DateTime.now().add(Duration(seconds: _restTimerSeconds));
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimer());
+    notifyListeners();
+  }
+
+  void _tickTimer() {
+    if (!_timerActive || _timerEndTime == null) return;
+    final remaining = _timerEndTime!.difference(DateTime.now()).inSeconds;
+    if (remaining <= 0) {
+      _restTimer?.cancel();
+      _timerActive = false;
+      _timerRemaining = 0;
+      _timerEndTime = null;
+    } else {
+      _timerRemaining = remaining;
+    }
     notifyListeners();
   }
 
   void stopRestTimer() {
     _restTimer?.cancel();
     _timerActive = false;
+    _timerEndTime = null;
     notifyListeners();
+  }
+
+  // When the app resumes from background, recalculate remaining from the
+  // stored end time so the timer shows the real elapsed time, not the
+  // stale value from before the Dart VM was paused.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _timerActive) {
+      _tickTimer();
+    }
   }
 
   // Get notes from the most recent completed session that included a given lift.
