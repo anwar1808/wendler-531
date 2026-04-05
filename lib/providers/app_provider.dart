@@ -40,6 +40,9 @@ class AppProvider extends ChangeNotifier {
   int _timerDuration = 0;
   String _timerLiftName = '';
   String? _timerNextSet;
+  // True while a screen that renders its own full RestTimerWidget is mounted.
+  // When true, the global compact bar in MaterialApp.builder is suppressed.
+  bool _timerOverlayMounted = false;
 
   // Per-lift week tracking: each lift tracks its own week (1-4)
   Map<String, int> _liftWeeks = {};
@@ -61,6 +64,13 @@ class AppProvider extends ChangeNotifier {
   int get timerDuration => _timerDuration;
   String get timerLiftName => _timerLiftName;
   String? get timerNextSet => _timerNextSet;
+  bool get timerOverlayMounted => _timerOverlayMounted;
+
+  void setTimerOverlayMounted(bool value) {
+    if (_timerOverlayMounted == value) return;
+    _timerOverlayMounted = value;
+    notifyListeners();
+  }
 
   Future<void> initialize() async {
     _isLoading = true;

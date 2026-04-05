@@ -32,6 +32,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   // Track which items are checked off
   final Set<int> _checkedItems = {};
   bool _initialized = false;
+  AppProvider? _provider;
 
   // Step indices
   static const int _idxWarmup = 0;
@@ -46,11 +47,19 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
+      _provider = context.read<AppProvider>();
+      _provider!.setTimerOverlayMounted(true);
       if (widget.isAlreadyComplete) {
         _checkedItems.addAll(
             {_idxWarmup, _idxSet1, _idxRest1, _idxSet2, _idxRest2, _idxAmrap});
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _provider?.setTimerOverlayMounted(false);
+    super.dispose();
   }
 
   @override

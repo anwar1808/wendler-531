@@ -23,6 +23,7 @@ class SessionScreen extends StatefulWidget {
 class _SessionScreenState extends State<SessionScreen> {
   final TextEditingController _notesController = TextEditingController();
   late SessionModel _session;
+  AppProvider? _provider;
 
   @override
   void initState() {
@@ -32,7 +33,17 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_provider == null) {
+      _provider = context.read<AppProvider>();
+      _provider!.setTimerOverlayMounted(true);
+    }
+  }
+
+  @override
   void dispose() {
+    _provider?.setTimerOverlayMounted(false);
     _notesController.dispose();
     super.dispose();
   }
