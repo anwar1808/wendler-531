@@ -1,5 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p;
 import '../providers/app_provider.dart';
 import '../models/lift_type.dart';
 import '../services/wendler_calculator.dart';
@@ -32,6 +37,10 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 8),
           _SectionHeader(label: 'Rest Timer'),
           _RestTimerCard(provider: provider),
+
+          const SizedBox(height: 8),
+          _SectionHeader(label: 'Data'),
+          _BackupCard(),
 
           const SizedBox(height: 8),
           _SectionHeader(label: 'About'),
@@ -126,9 +135,9 @@ class _TmCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        WendlerCalculator.formatWeight(tm),
-                        style: const TextStyle(
-                          color: AppTheme.accent,
+                        tm <= 0 ? 'Not set' : WendlerCalculator.formatWeight(tm),
+                        style: TextStyle(
+                          color: tm <= 0 ? AppTheme.textSecondary : AppTheme.accent,
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
                         ),
@@ -302,6 +311,90 @@ class _RestTimerCard extends StatelessWidget {
                 Text('1m', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
                 Text('5m', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BackupCard extends StatefulWidget {
+  const _BackupCard();
+
+  @override
+  State<_BackupCard> createState() => _BackupCardState();
+}
+
+class _BackupCardState extends State<_BackupCard> {
+  bool _busy = false;
+
+  Future<void> _backup() async {
+    setState(() => _busy = true);
+    try {
+      final dbDir = await getDatabasesPath();
+      final src = File(p.join(dbDir, 'wendler_531.db'));
+      if (!await src.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Database file not found.')),
+          );
+        }
+        return;
+      }
+
+      final tmp = await getTemporaryDirectory();
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .substring(0, 19);
+      final dest = File(p.join(tmp.path, 'wendler_531_backup_$timestamp.db'));
+      await src.copy(dest.path);
+
+      await Share.shareXFiles(
+        [XFile(dest.path)],
+        text: 'Wendler 531 database backup — $timestamp',
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Backup Database',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Save a copy of your database to Google Drive, Files, email, or any other app.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _busy ? null : _backup,
+                icon: _busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_outlined, size: 18),
+                label: Text(_busy ? 'Preparing…' : 'Export backup'),
+              ),
             ),
           ],
         ),

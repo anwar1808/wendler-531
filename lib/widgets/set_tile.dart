@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/set_log_model.dart';
 import '../services/wendler_calculator.dart';
+import '../services/plate_calculator.dart';
 import '../theme/app_theme.dart';
 
 class SetTile extends StatelessWidget {
@@ -45,26 +46,32 @@ class SetTile extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  weightStr,
-                  style: TextStyle(
-                    color: setLog.isComplete ? AppTheme.textSecondary : AppTheme.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    decoration: setLog.isComplete ? TextDecoration.lineThrough : null,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      weightStr,
+                      style: TextStyle(
+                        color: setLog.isComplete ? AppTheme.textSecondary : AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        decoration: setLog.isComplete ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '× $repsLabel',
+                      style: TextStyle(
+                        color: setLog.isAmrap ? AppTheme.accent : AppTheme.textSecondary,
+                        fontSize: 16,
+                        fontWeight: setLog.isAmrap ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  '× $repsLabel',
-                  style: TextStyle(
-                    color: setLog.isAmrap ? AppTheme.accent : AppTheme.textSecondary,
-                    fontSize: 16,
-                    fontWeight: setLog.isAmrap ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
+                _PlatesLine(weight: setLog.prescribedWeight),
               ],
             ),
           ),
@@ -85,6 +92,24 @@ class SetTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PlatesLine extends StatelessWidget {
+  final double weight;
+  const _PlatesLine({required this.weight});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = PlateCalculator.formatPlates(weight);
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Text(
+      text,
+      style: const TextStyle(
+        color: AppTheme.textSecondary,
+        fontSize: 11,
       ),
     );
   }

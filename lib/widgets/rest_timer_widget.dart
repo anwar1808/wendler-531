@@ -1,9 +1,11 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-class RestTimerWidget extends StatefulWidget {
+/// A display-only rest timer widget driven by an external [remaining] counter.
+/// The actual countdown lives in AppProvider; this widget just renders the state.
+class RestTimerWidget extends StatelessWidget {
   final int durationSeconds;
+  final int remaining;
   final String liftName;
   final String? nextSetInfo;
   final VoidCallback onDone;
@@ -12,54 +14,22 @@ class RestTimerWidget extends StatefulWidget {
   const RestTimerWidget({
     super.key,
     required this.durationSeconds,
+    required this.remaining,
     required this.liftName,
     this.nextSetInfo,
     required this.onDone,
     required this.onSkip,
   });
 
-  @override
-  State<RestTimerWidget> createState() => _RestTimerWidgetState();
-}
-
-class _RestTimerWidgetState extends State<RestTimerWidget> {
-  late int _remaining;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _remaining = widget.durationSeconds;
-    _startTimer();
-  }
-
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remaining <= 1) {
-        timer.cancel();
-        setState(() => _remaining = 0);
-        widget.onDone();
-      } else {
-        setState(() => _remaining--);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
   String get _timeDisplay {
-    final mins = _remaining ~/ 60;
-    final secs = _remaining % 60;
+    final mins = remaining ~/ 60;
+    final secs = remaining % 60;
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
   double get _progress {
-    if (widget.durationSeconds == 0) return 0;
-    return _remaining / widget.durationSeconds;
+    if (durationSeconds == 0) return 0;
+    return remaining / durationSeconds;
   }
 
   @override
@@ -100,7 +70,7 @@ class _RestTimerWidgetState extends State<RestTimerWidget> {
           ),
           const SizedBox(height: 8),
           Text(
-            widget.liftName,
+            liftName,
             style: const TextStyle(
               color: AppTheme.textPrimary,
               fontSize: 18,
@@ -120,7 +90,7 @@ class _RestTimerWidgetState extends State<RestTimerWidget> {
                     strokeWidth: 8,
                     backgroundColor: AppTheme.surface,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      _remaining <= 10 ? Colors.red : AppTheme.accent,
+                      remaining <= 10 ? Colors.red : AppTheme.accent,
                     ),
                   ),
                 ),
@@ -137,7 +107,7 @@ class _RestTimerWidgetState extends State<RestTimerWidget> {
             ),
           ),
           const SizedBox(height: 32),
-          if (widget.nextSetInfo != null) ...[
+          if (nextSetInfo != null) ...[
             Text(
               'NEXT',
               style: TextStyle(
@@ -148,7 +118,7 @@ class _RestTimerWidgetState extends State<RestTimerWidget> {
             ),
             const SizedBox(height: 4),
             Text(
-              widget.nextSetInfo!,
+              nextSetInfo!,
               style: const TextStyle(
                 color: AppTheme.accent,
                 fontSize: 18,
@@ -160,7 +130,7 @@ class _RestTimerWidgetState extends State<RestTimerWidget> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: widget.onSkip,
+              onPressed: onSkip,
               child: const Text('Skip Rest'),
             ),
           ),

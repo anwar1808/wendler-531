@@ -22,9 +22,6 @@ class SessionScreen extends StatefulWidget {
 
 class _SessionScreenState extends State<SessionScreen> {
   final TextEditingController _notesController = TextEditingController();
-  bool _timerVisible = false;
-  String _timerLiftName = '';
-  String? _timerNextSet;
   late SessionModel _session;
 
   @override
@@ -41,15 +38,7 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   void _showRestTimer(String liftName, String? nextSet) {
-    setState(() {
-      _timerVisible = true;
-      _timerLiftName = liftName;
-      _timerNextSet = nextSet;
-    });
-  }
-
-  void _hideRestTimer() {
-    setState(() => _timerVisible = false);
+    context.read<AppProvider>().startRestTimer(liftName, nextSet);
   }
 
   String get _sessionTitle {
@@ -66,7 +55,6 @@ class _SessionScreenState extends State<SessionScreen> {
     final sessionId = _session.id!;
     final setLogs = provider.getSetLogsForSession(sessionId);
     final lifts = _session.liftKeys;
-    final restSeconds = provider.restTimerSeconds;
 
     final dateLabel = _session.date.isNotEmpty
         ? DateFormat('EEE d MMM yyyy').format(DateTime.parse(_session.date))
@@ -177,8 +165,8 @@ class _SessionScreenState extends State<SessionScreen> {
             ],
           ),
 
-          // Rest timer overlay
-          if (_timerVisible)
+          // Rest timer overlay (reads from provider — persists across navigation)
+          if (provider.timerActive)
             Positioned(
               bottom: 0,
               left: 0,
@@ -186,11 +174,12 @@ class _SessionScreenState extends State<SessionScreen> {
               child: Material(
                 color: Colors.transparent,
                 child: RestTimerWidget(
-                  durationSeconds: restSeconds,
-                  liftName: _timerLiftName,
-                  nextSetInfo: _timerNextSet,
-                  onDone: _hideRestTimer,
-                  onSkip: _hideRestTimer,
+                  durationSeconds: provider.timerDuration,
+                  remaining: provider.timerRemaining,
+                  liftName: provider.timerLiftName,
+                  nextSetInfo: provider.timerNextSet,
+                  onDone: provider.stopRestTimer,
+                  onSkip: provider.stopRestTimer,
                 ),
               ),
             ),

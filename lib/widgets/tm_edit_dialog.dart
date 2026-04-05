@@ -25,7 +25,9 @@ class _TmEditDialogState extends State<TmEditDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.currentValue.toStringAsFixed(1));
+    _controller = TextEditingController(
+      text: widget.currentValue <= 0 ? '' : widget.currentValue.toStringAsFixed(1),
+    );
   }
 
   @override
@@ -36,8 +38,8 @@ class _TmEditDialogState extends State<TmEditDialog> {
 
   void _validate() {
     final val = double.tryParse(_controller.text);
-    if (val == null || val <= 0) {
-      setState(() => _error = 'Enter a valid positive number');
+    if (val == null || val < 20) {
+      setState(() => _error = 'Minimum 20kg');
       return;
     }
     widget.onSave(val);

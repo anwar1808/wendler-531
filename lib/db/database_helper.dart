@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'wendler_531.db');
     return await openDatabase(
       path,
-      version: 4,
+      version: 8,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -114,12 +114,36 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE joint_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id INTEGER NOT NULL,
+        week_num INTEGER NOT NULL,
+        lift TEXT NOT NULL,
+        severity INTEGER NOT NULL,
+        is_immediate INTEGER NOT NULL DEFAULT 1,
+        date TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE week_transition_decisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id INTEGER NOT NULL,
+        from_week INTEGER NOT NULL,
+        lift TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        severity INTEGER NOT NULL,
+        date TEXT NOT NULL
+      )
+    ''');
+
     await _seedHistoricalData(db);
   }
 
   Future<void> _seedHistoricalData(Database db) async {
-    // Check if history_entries is empty (first launch guard)
-    final countResult = await db.rawQuery('SELECT COUNT(*) as cnt FROM history_entries');
+    // Check if cycles table is empty (first launch guard)
+    final countResult = await db.rawQuery('SELECT COUNT(*) as cnt FROM cycles');
     final count = countResult.first['cnt'] as int;
     if (count > 0) return;
 
@@ -127,50 +151,13 @@ class DatabaseHelper {
     final todayStr =
         '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-    // Heikal's historical entries extracted from training log (2024–2026)
-    final entries = <Map<String, dynamic>>[
-      // May 2024 — Initial 1RM tests before starting 531
-      {'date': '2024-05-01', 'lift': 'backSquat',     'weight_kg': 98.0, 'reps': 1, 'one_rm': 98.0,  'notes': '1RM test'},
-      {'date': '2024-05-01', 'lift': 'benchPress',    'weight_kg': 63.0, 'reps': 1, 'one_rm': 63.0,  'notes': '1RM test'},
-      {'date': '2024-05-01', 'lift': 'deadlift',      'weight_kg': 98.0, 'reps': 1, 'one_rm': 98.0,  'notes': '1RM test'},
-      {'date': '2024-05-01', 'lift': 'militaryPress', 'weight_kg': 44.0, 'reps': 1, 'one_rm': 44.0,  'notes': '1RM test'},
-      // Jul 2024 — 2nd cycle Week 2 AMRAP results (bench + squat)
-      {'date': '2024-07-10', 'lift': 'backSquat',  'weight_kg': 67.5, 'reps': 7, 'one_rm': 83.3,  'notes': ''},
-      {'date': '2024-07-10', 'lift': 'benchPress', 'weight_kg': 42.5, 'reps': 7, 'one_rm': 52.4,  'notes': ''},
-      // Dec 2024 — 3rd cycle Week 3: OHP struggle
-      {'date': '2024-12-05', 'lift': 'militaryPress', 'weight_kg': 45.0, 'reps': 2, 'one_rm': 48.0, 'notes': 'Struggled. Only got 2 reps.'},
-      // Feb 2026 — Cycle 2 Week 1: OHP AMRAP
-      {'date': '2026-02-10', 'lift': 'militaryPress', 'weight_kg': 32.0, 'reps': 7, 'one_rm': 39.5, 'notes': ''},
-      // Mar 2026 — Cycle 3 Week 3 (1s week) — most recent session
-      {'date': '2026-03-19', 'lift': 'backSquat',     'weight_kg': 95.0, 'reps': 3, 'one_rm': 104.5, 'notes': 'Solid. Forgot waist belt but got good guidance and stopped at 3.'},
-      {'date': '2026-03-20', 'lift': 'militaryPress', 'weight_kg': 45.0, 'reps': 5, 'one_rm': 52.5,  'notes': "Don't think I could do 6."},
-      {'date': '2026-03-21', 'lift': 'benchPress',    'weight_kg': 67.5, 'reps': 5, 'one_rm': 79.0,  'notes': "Amazing. Didn't expect it!"},
-      {'date': '2026-03-22', 'lift': 'deadlift',      'weight_kg': 95.0, 'reps': 5, 'one_rm': 110.8, 'notes': 'Coach corrected stance — was too wide. Tucked feet in, felt lower back more. Got 5 solid reps.'},
-    ];
-
-    final batch = db.batch();
-    for (final e in entries) {
-      batch.insert('history_entries', {
-        'date': e['date'],
-        'lift': e['lift'],
-        'weight_kg': e['weight_kg'],
-        'reps': e['reps'],
-        'one_rm': e['one_rm'],
-        'notes': e['notes'],
-        'is_imported': 1,
-      });
-    }
-    await batch.commit(noResult: true);
-
-    // Heikal's training maxes as of Cycle 3 Week 3 (Mar 2026)
-    final trainingMaxes = [
-      {'lift': 'benchPress',    'value_kg': 70.0,  'updated_at': todayStr},
-      {'lift': 'deadlift',      'value_kg': 100.0, 'updated_at': todayStr},
-      {'lift': 'militaryPress', 'value_kg': 47.5,  'updated_at': todayStr},
-      {'lift': 'backSquat',     'value_kg': 100.0, 'updated_at': todayStr},
-    ];
-    for (final tm in trainingMaxes) {
-      await db.insert('training_maxes', tm, conflictAlgorithm: ConflictAlgorithm.replace);
+    // TMs start at 0 — user must configure them in Settings before starting
+    for (final lift in ['benchPress', 'deadlift', 'militaryPress', 'backSquat']) {
+      await db.insert(
+        'training_maxes',
+        {'lift': lift, 'value_kg': 0.0, 'updated_at': todayStr},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
 
     // Insert initial cycle (number=1, start_date=today, is_complete=0)
@@ -188,115 +175,7 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
-
-    // Seed bodyweight entries (deduplicate by date — average if multiple same day)
-    final bwRaw = [
-      {'date': '2018-06-24', 'weight_kg': 53.0},
-      {'date': '2018-06-27', 'weight_kg': 54.5},
-      {'date': '2018-07-03', 'weight_kg': 54.5},
-      {'date': '2018-07-06', 'weight_kg': 54.55},
-      {'date': '2018-07-08', 'weight_kg': 54.6},
-      {'date': '2018-07-11', 'weight_kg': 54.6},
-      {'date': '2018-07-16', 'weight_kg': 55.1},
-      {'date': '2018-07-19', 'weight_kg': 55.1},
-      {'date': '2018-07-20', 'weight_kg': 55.6},
-      {'date': '2018-07-27', 'weight_kg': 55.6},
-      {'date': '2018-07-28', 'weight_kg': 55.7},
-      {'date': '2018-07-31', 'weight_kg': 56.5},
-      {'date': '2018-08-01', 'weight_kg': 55.7},
-      {'date': '2018-08-02', 'weight_kg': 56.5},
-      {'date': '2018-08-03', 'weight_kg': 55.5},
-      {'date': '2018-08-09', 'weight_kg': 56.9},
-      {'date': '2018-08-10', 'weight_kg': 55.5},
-      {'date': '2018-08-21', 'weight_kg': 58.4},
-      {'date': '2018-08-31', 'weight_kg': 55.6},
-      {'date': '2018-09-07', 'weight_kg': 56.9},
-      {'date': '2018-09-08', 'weight_kg': 57.7},
-      {'date': '2018-09-11', 'weight_kg': 58.4},
-      {'date': '2018-09-14', 'weight_kg': 55.6},
-      {'date': '2018-09-16', 'weight_kg': 58.0},
-      {'date': '2018-09-19', 'weight_kg': 56.0},
-      {'date': '2018-09-26', 'weight_kg': 56.0},
-      {'date': '2018-10-26', 'weight_kg': 57.1},
-      {'date': '2018-11-06', 'weight_kg': 57.1},
-      {'date': '2018-12-11', 'weight_kg': 57.5},
-      {'date': '2018-12-14', 'weight_kg': 57.5},
-      {'date': '2018-12-15', 'weight_kg': 57.85},
-      {'date': '2018-12-23', 'weight_kg': 58.2},
-      {'date': '2018-12-27', 'weight_kg': 58.2},
-      {'date': '2019-01-03', 'weight_kg': 57.5},
-      {'date': '2019-01-24', 'weight_kg': 57.5},
-      {'date': '2019-02-23', 'weight_kg': 57.5},
-      {'date': '2022-02-02', 'weight_kg': 59.8},
-      {'date': '2022-02-03', 'weight_kg': 59.8},
-      {'date': '2022-02-09', 'weight_kg': 59.7},
-      {'date': '2022-02-15', 'weight_kg': 59.7},
-      {'date': '2022-02-17', 'weight_kg': 59.4},
-      {'date': '2022-02-23', 'weight_kg': 59.4},
-      {'date': '2022-03-13', 'weight_kg': 58.7},
-      {'date': '2022-03-16', 'weight_kg': 58.7},
-      {'date': '2022-03-22', 'weight_kg': 58.0},
-      {'date': '2022-03-31', 'weight_kg': 58.0},
-      {'date': '2022-04-12', 'weight_kg': 58.0},
-      {'date': '2022-04-16', 'weight_kg': 55.4},
-      {'date': '2022-04-28', 'weight_kg': 55.4},
-      {'date': '2022-05-09', 'weight_kg': 55.4},
-      {'date': '2022-09-30', 'weight_kg': 58.0},
-      {'date': '2022-10-06', 'weight_kg': 58.0},
-      {'date': '2022-10-08', 'weight_kg': 57.85},
-      {'date': '2022-11-13', 'weight_kg': 57.7},
-      {'date': '2023-07-12', 'weight_kg': 55.2},
-      {'date': '2023-07-17', 'weight_kg': 57.0},
-      {'date': '2023-07-21', 'weight_kg': 56.5},
-      {'date': '2023-07-22', 'weight_kg': 57.0},
-      {'date': '2023-07-28', 'weight_kg': 56.5},
-      {'date': '2023-07-31', 'weight_kg': 56.5},
-      {'date': '2023-08-02', 'weight_kg': 56.5},
-      {'date': '2023-08-04', 'weight_kg': 56.9},
-      {'date': '2023-08-09', 'weight_kg': 56.9},
-      {'date': '2023-08-10', 'weight_kg': 56.9},
-      {'date': '2023-08-21', 'weight_kg': 58.4},
-      {'date': '2023-09-07', 'weight_kg': 56.9},
-      {'date': '2023-09-08', 'weight_kg': 57.7},
-      {'date': '2023-09-11', 'weight_kg': 58.4},
-      {'date': '2023-09-16', 'weight_kg': 58.0},
-      {'date': '2023-10-02', 'weight_kg': 57.7},
-      {'date': '2023-10-03', 'weight_kg': 58.2},
-      {'date': '2023-10-05', 'weight_kg': 58.0},
-      {'date': '2023-10-08', 'weight_kg': 58.2},
-      {'date': '2023-10-09', 'weight_kg': 58.2},
-      {'date': '2023-10-17', 'weight_kg': 58.25},
-      {'date': '2023-10-18', 'weight_kg': 58.3},
-      {'date': '2023-11-14', 'weight_kg': 58.3},
-      {'date': '2023-11-15', 'weight_kg': 58.3},
-      {'date': '2023-11-17', 'weight_kg': 58.3},
-      {'date': '2023-11-18', 'weight_kg': 58.3},
-      {'date': '2023-11-19', 'weight_kg': 58.3},
-      {'date': '2023-11-23', 'weight_kg': 58.6},
-      {'date': '2023-11-27', 'weight_kg': 58.6},
-      {'date': '2023-12-03', 'weight_kg': 58.3},
-      {'date': '2023-12-07', 'weight_kg': 58.6},
-      {'date': '2023-12-08', 'weight_kg': 59.3},
-      {'date': '2023-12-11', 'weight_kg': 59.3},
-      {'date': '2023-12-13', 'weight_kg': 59.3},
-    ];
-
-    // Deduplicate by date — average if multiple same day
-    final bwByDate = <String, List<double>>{};
-    for (final e in bwRaw) {
-      final d = e['date'] as String;
-      final w = e['weight_kg'] as double;
-      bwByDate.putIfAbsent(d, () => []).add(w);
-    }
-    final bwBatch = db.batch();
-    for (final entry in bwByDate.entries) {
-      final avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
-      bwBatch.insert('bodyweight_entries', {
-        'date': entry.key,
-        'weight_kg': avg,
-      });
-    }
-    await bwBatch.commit(noResult: true);
+    // No historical entries, no bodyweight data — user starts fresh
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -345,6 +224,165 @@ class DatabaseHelper {
             date TEXT NOT NULL
           )
         ''');
+      } catch (_) {}
+    }
+    if (oldVersion < 5) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS joint_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cycle_id INTEGER NOT NULL,
+            week_num INTEGER NOT NULL,
+            lift TEXT NOT NULL,
+            severity INTEGER NOT NULL,
+            is_immediate INTEGER NOT NULL DEFAULT 1,
+            date TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS week_transition_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cycle_id INTEGER NOT NULL,
+            from_week INTEGER NOT NULL,
+            lift TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            severity INTEGER NOT NULL,
+            tm_before REAL NOT NULL DEFAULT 0,
+            date TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+    }
+    if (oldVersion < 6) {
+      // Add tm_before column to existing week_transition_decisions table
+      try {
+        await db.execute(
+            'ALTER TABLE week_transition_decisions ADD COLUMN tm_before REAL NOT NULL DEFAULT 0');
+      } catch (_) {}
+    }
+    if (oldVersion < 7) {
+      // Migrate notes from history_entries → sessions for app-logged entries.
+      // For each non-imported history entry with non-empty notes, find the
+      // matching session (same date, same lift) and copy the notes across if
+      // the session notes are currently empty.
+      try {
+        final entries = await db.query(
+          'history_entries',
+          where: 'is_imported = 0 AND notes != ""',
+        );
+        for (final e in entries) {
+          final date = e['date'] as String;
+          final lift = e['lift'] as String;
+          final notes = e['notes'] as String;
+          // Find sessions on that date that include this lift and have empty notes
+          final sessions = await db.query(
+            'sessions',
+            where: 'date = ? AND notes = "" AND lifts LIKE ?',
+            whereArgs: [date, '%$lift%'],
+          );
+          for (final s in sessions) {
+            await db.update(
+              'sessions',
+              {'notes': notes},
+              where: 'id = ?',
+              whereArgs: [s['id']],
+            );
+          }
+        }
+      } catch (_) {}
+    }
+    if (oldVersion < 8) {
+      // Fix corrupted TMs caused by the tm_before=0 bug in commitWeekTransition.
+      // When an old transition decision had tm_before=0 (legacy default from the
+      // v6 ALTER TABLE migration), applying "progress" produced newTm = 0 + increment.
+      // Strategy: for each lift whose TM is suspiciously low (≤ 10kg), back-calculate
+      // the real TM from the AMRAP weight logged in the corresponding session, then
+      // re-apply the transition decision.
+      try {
+        // AMRAP set percentage per week
+        const amrapPctByWeek = {1: 0.85, 2: 0.90, 3: 0.95, 4: 0.60};
+        // TM increment per lift
+        const tmIncrements = {
+          'backSquat': 5.0,
+          'deadlift': 5.0,
+          'benchPress': 2.5,
+          'militaryPress': 2.5,
+        };
+
+        for (final liftEntry in tmIncrements.entries) {
+          final lift = liftEntry.key;
+          final increment = liftEntry.value;
+
+          final tmRows = await db.query('training_maxes',
+              where: 'lift = ?', whereArgs: [lift]);
+          if (tmRows.isEmpty) continue;
+          final currentTm = (tmRows.first['value_kg'] as num).toDouble();
+          if (currentTm > 10.0) continue; // not corrupted
+
+          // Find the latest transition decision with tm_before = 0 for this lift
+          final decRows = await db.query('week_transition_decisions',
+              where: 'lift = ? AND tm_before <= 0',
+              whereArgs: [lift],
+              orderBy: 'date DESC',
+              limit: 1);
+          if (decRows.isEmpty) continue;
+
+          final fromWeek = decRows.first['from_week'] as int;
+          final decision = decRows.first['decision'] as String;
+          final decId = decRows.first['id'] as int;
+
+          // Find the completed session for this week + lift
+          final sessRows = await db.query('sessions',
+              where: 'lifts LIKE ? AND week = ? AND is_complete = 1',
+              whereArgs: ['%$lift%', fromWeek],
+              orderBy: 'date DESC',
+              limit: 1);
+          if (sessRows.isEmpty) continue;
+
+          final sessDate = sessRows.first['date'] as String;
+
+          // Find the AMRAP history entry logged on that session date
+          final histRows = await db.query('history_entries',
+              where: 'lift = ? AND date = ? AND is_imported = 0',
+              whereArgs: [lift, sessDate],
+              limit: 1);
+          if (histRows.isEmpty) continue;
+
+          final amrapWeight = (histRows.first['weight_kg'] as num).toDouble();
+          final pct = amrapPctByWeek[fromWeek] ?? 0.85;
+
+          // Back-calculate the TM: find the 2.5kg-aligned value whose AMRAP
+          // weight (ceil(TM*pct/2.5)*2.5) equals the logged weight.
+          final approx = amrapWeight / pct;
+          final minC = ((approx - 10.0) / 2.5).floor() * 2.5;
+          final maxC = ((approx + 10.0) / 2.5).ceil() * 2.5;
+          double tmBefore = approx; // fallback
+          for (double c = minC; c <= maxC; c += 2.5) {
+            if (c <= 0) continue;
+            if (((c * pct / 2.5).ceil() * 2.5 - amrapWeight).abs() < 0.01) {
+              tmBefore = c;
+              break;
+            }
+          }
+
+          // Re-apply the decision to get the correct new TM
+          double newTm;
+          if (decision == 'progress') {
+            newTm = ((tmBefore + increment) / 2.5).ceil() * 2.5;
+          } else if (decision == 'reduce') {
+            newTm = ((tmBefore * 0.95) / 2.5).floor() * 2.5;
+          } else {
+            newTm = tmBefore; // hold
+          }
+
+          await db.update('training_maxes', {'value_kg': newTm},
+              where: 'lift = ?', whereArgs: [lift]);
+          // Also fix the stored tm_before so future edits use the correct baseline
+          await db.update('week_transition_decisions', {'tm_before': tmBefore},
+              where: 'id = ?', whereArgs: [decId]);
+        }
       } catch (_) {}
     }
   }
@@ -623,5 +661,98 @@ class DatabaseHelper {
       where: 'is_imported = 1',
       orderBy: 'date DESC',
     );
+  }
+
+  // Joint logs
+  Future<void> insertJointLog(
+      int cycleId, int weekNum, String lift, int severity, bool isImmediate, String date) async {
+    final db = await database;
+    await db.insert('joint_logs', {
+      'cycle_id': cycleId,
+      'week_num': weekNum,
+      'lift': lift,
+      'severity': severity,
+      'is_immediate': isImmediate ? 1 : 0,
+      'date': date,
+    });
+  }
+
+  Future<int?> getImmediateJointSeverity(int cycleId, int weekNum, String lift) async {
+    final db = await database;
+    final rows = await db.query(
+      'joint_logs',
+      where: 'cycle_id = ? AND week_num = ? AND lift = ? AND is_immediate = 1',
+      whereArgs: [cycleId, weekNum, lift],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['severity'] as int;
+  }
+
+  // Week transition decisions
+  Future<void> upsertWeekTransitionDecision(int cycleId, int fromWeek, String lift,
+      String decision, int severity, double tmBefore, String date) async {
+    final db = await database;
+    // Delete any existing decision for this cycle/week/lift first
+    await db.delete(
+      'week_transition_decisions',
+      where: 'cycle_id = ? AND from_week = ? AND lift = ?',
+      whereArgs: [cycleId, fromWeek, lift],
+    );
+    await db.insert('week_transition_decisions', {
+      'cycle_id': cycleId,
+      'from_week': fromWeek,
+      'lift': lift,
+      'decision': decision,
+      'severity': severity,
+      'tm_before': tmBefore,
+      'date': date,
+    });
+  }
+
+  Future<Map<String, String>> getAllTransitionDecisionsForCycle(int cycleId) async {
+    final db = await database;
+    final rows = await db.query(
+      'week_transition_decisions',
+      where: 'cycle_id = ?',
+      whereArgs: [cycleId],
+    );
+    final result = <String, String>{};
+    for (final row in rows) {
+      final key = '${row['from_week']}_${row['lift']}';
+      result[key] = row['decision'] as String;
+    }
+    return result;
+  }
+
+  Future<Map<String, double>> getAllTransitionTmBeforeForCycle(int cycleId) async {
+    final db = await database;
+    final rows = await db.query(
+      'week_transition_decisions',
+      where: 'cycle_id = ?',
+      whereArgs: [cycleId],
+    );
+    final result = <String, double>{};
+    for (final row in rows) {
+      final key = '${row['from_week']}_${row['lift']}';
+      result[key] = (row['tm_before'] as num).toDouble();
+    }
+    return result;
+  }
+
+  Future<Map<String, int>> getAllImmediateJointLogsForCycle(int cycleId) async {
+    final db = await database;
+    final rows = await db.query(
+      'joint_logs',
+      where: 'cycle_id = ? AND is_immediate = 1',
+      whereArgs: [cycleId],
+    );
+    final result = <String, int>{};
+    for (final row in rows) {
+      final key = '${row['week_num']}_${row['lift']}';
+      result[key] = row['severity'] as int;
+    }
+    return result;
   }
 }

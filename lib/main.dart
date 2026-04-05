@@ -6,6 +6,7 @@ import 'screens/home_screen.dart';
 import 'screens/progress_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
+import 'widgets/persistent_timer_bar.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,10 +51,24 @@ class _MainNavState extends State<MainNav> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<AppProvider>();
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
+          // Compact timer bar shown above the bottom nav when a rest timer
+          // is active and the user is on a main tab.
+          if (provider.timerActive)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: PersistentTimerBar(provider: provider),
+            ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,

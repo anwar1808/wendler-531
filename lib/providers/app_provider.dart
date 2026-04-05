@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../models/lift_type.dart';
@@ -9,7 +11,7 @@ import '../models/set_log_model.dart';
 import '../models/history_entry.dart';
 import '../services/wendler_calculator.dart';
 
-class AppProvider extends ChangeNotifier {
+class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   final DatabaseHelper _db = DatabaseHelper.instance;
 
   Map<String, double> _trainingMaxes = {};
@@ -23,8 +25,24 @@ class AppProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _bodyweightEntries = [];
   // zone2 minutes per week cache: key = "cycleId_weekNum"
   final Map<String, int> _zone2Cache = {};
+  // Joint log cache: key = "weekNum_liftKey" → severity (1-5), immediate post-workout only
+  final Map<String, int> _immediateJointLogs = {};
+  // Transition decision cache: key = "fromWeek_liftKey" → decision string
+  final Map<String, String> _transitionDecisions = {};
+  // TM before each transition decision: key = "fromWeek_liftKey" → tm value
+  final Map<String, double> _transitionTmBefore = {};
   int _restTimerSeconds = 180;
   bool _isLoading = true;
+
+  // Persistent rest timer
+  Timer? _restTimer;
+  bool _timerActive = false;
+  int _timerRemaining = 0;
+  int _timerDuration = 0;
+  String _timerLiftName = '';
+  String? _timerNextSet;
+  // Absolute wall-clock end time — used to correct remaining after VM pause.
+  DateTime? _timerEndTime;
 
   // Per-lift week tracking: each lift tracks its own week (1-4)
   Map<String, int> _liftWeeks = {};
@@ -41,7 +59,14 @@ class AppProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   Map<String, int> get liftWeeks => _liftWeeks;
 
+  bool get timerActive => _timerActive;
+  int get timerRemaining => _timerRemaining;
+  int get timerDuration => _timerDuration;
+  String get timerLiftName => _timerLiftName;
+  String? get timerNextSet => _timerNextSet;
+
   Future<void> initialize() async {
+    WidgetsBinding.instance.addObserver(this);
     _isLoading = true;
     notifyListeners();
 
@@ -57,6 +82,7 @@ class AppProvider extends ChangeNotifier {
     await _loadLiftWeeks();
     await _loadBodyweightEntries();
     await _loadZone2Cache();
+    await _loadJointCaches();
 
     _isLoading = false;
     notifyListeners();
@@ -173,6 +199,20 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadJointCaches() async {
+    _immediateJointLogs.clear();
+    _transitionDecisions.clear();
+    _transitionTmBefore.clear();
+    if (_currentCycle == null) return;
+    final cycleId = _currentCycle!.id!;
+    final joints = await _db.getAllImmediateJointLogsForCycle(cycleId);
+    _immediateJointLogs.addAll(joints);
+    final decisions = await _db.getAllTransitionDecisionsForCycle(cycleId);
+    _transitionDecisions.addAll(decisions);
+    final tmBefores = await _db.getAllTransitionTmBeforeForCycle(cycleId);
+    _transitionTmBefore.addAll(tmBefores);
+  }
+
   // Get current week for a specific lift
   int getLiftWeek(LiftType lift) {
     return _liftWeeks[lift.dbKey] ?? 1;
@@ -197,6 +237,77 @@ class AppProvider extends ChangeNotifier {
     );
     await _db.upsertTrainingMax(tm);
     _trainingMaxes[lift.dbKey] = value;
+    notifyListeners();
+  }
+
+  // Joint feedback & week transition decisions
+  Future<void> logImmediateJointFeedback(
+      int cycleId, int week, LiftType lift, int severity) async {
+    final date = DateTime.now().toIso8601String().substring(0, 10);
+    await _db.insertJointLog(cycleId, week, lift.dbKey, severity, true, date);
+    _immediateJointLogs['${week}_${lift.dbKey}'] = severity;
+    notifyListeners();
+  }
+
+  int? getImmediateJointSeverity(int cycleId, int week, LiftType lift) {
+    return _immediateJointLogs['${week}_${lift.dbKey}'];
+  }
+
+  bool hasWeekTransitionDecision(int cycleId, int fromWeek, LiftType lift) {
+    return _transitionDecisions.containsKey('${fromWeek}_${lift.dbKey}');
+  }
+
+  String? getWeekTransitionDecision(int cycleId, int fromWeek, LiftType lift) {
+    return _transitionDecisions['${fromWeek}_${lift.dbKey}'];
+  }
+
+  double? getTransitionTmBefore(int fromWeek, LiftType lift) {
+    return _transitionTmBefore['${fromWeek}_${lift.dbKey}'];
+  }
+
+  bool isLiftCompleteForWeek(LiftType lift, int week) {
+    return _currentSessions.any(
+        (s) => s.week == week && s.isComplete && s.liftKeys.contains(lift.dbKey));
+  }
+
+  Future<void> commitWeekTransition(
+      int cycleId, int fromWeek, LiftType lift, String decision, int severity) async {
+    final key = '${fromWeek}_${lift.dbKey}';
+    final date = DateTime.now().toIso8601String().substring(0, 10);
+
+    // Determine the TM to use as baseline.
+    // On first commit: use current TM (and store it as tm_before).
+    // On edit: revert to the original tm_before, then apply new decision.
+    // Guard: if stored tm_before is 0 (legacy default from pre-v6 migration),
+    // fall back to the live TM rather than propagating the zero.
+    final isEdit = _transitionDecisions.containsKey(key);
+    final storedTm = isEdit ? _transitionTmBefore[key] : null;
+    final tmBefore = (storedTm != null && storedTm > 0)
+        ? storedTm
+        : getTrainingMax(lift);
+
+    await _db.upsertWeekTransitionDecision(
+        cycleId, fromWeek, lift.dbKey, decision, severity, tmBefore, date);
+    _transitionDecisions[key] = decision;
+    _transitionTmBefore[key] = tmBefore;
+
+    // Apply TM change
+    double newTm;
+    if (decision == 'progress') {
+      newTm = WendlerCalculator.roundToNearest2_5(tmBefore + lift.tmIncrement);
+    } else if (decision == 'reduce') {
+      newTm = WendlerCalculator.roundDownToNearest2_5(tmBefore * 0.95);
+    } else {
+      newTm = tmBefore; // hold
+    }
+    await updateTrainingMax(lift, newTm);
+
+    // Apply week: hold = repeat fromWeek (unless deload week 4); progress/reduce = stay on fromWeek+1
+    final targetWeek = (decision == 'hold' && fromWeek != 4)
+        ? fromWeek
+        : (fromWeek == 4 ? 1 : fromWeek + 1);
+    await _db.setLiftWeek(lift.dbKey, targetWeek);
+    _liftWeeks[lift.dbKey] = targetWeek;
     notifyListeners();
   }
 
@@ -381,7 +492,8 @@ class AppProvider extends ChangeNotifier {
       );
     }
 
-    // Insert history entry (not imported — so beat-last hint picks it up)
+    // Insert history entry (not imported — so beat-last hint picks it up).
+    // Notes live on the session record only; history_entries.notes stays empty.
     final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
     await _db.insertHistoryEntry(HistoryEntry(
       date: today,
@@ -389,13 +501,12 @@ class AppProvider extends ChangeNotifier {
       weightKg: amrapWeight,
       reps: reps,
       oneRm: oneRm,
-      notes: notes,
       isImported: false,
     ));
     await _loadHistory();
 
-    // Mark session complete
-    final updated = session.copyWith(isComplete: true);
+    // Mark session complete and persist notes on the session record
+    final updated = session.copyWith(isComplete: true, notes: notes);
     await _db.updateSession(updated);
 
     // Advance week for this lift only
@@ -598,14 +709,76 @@ class AppProvider extends ChangeNotifier {
     return _currentSessions.where((s) => s.week == week).toList();
   }
 
-  // Week % complete: 4 lifts + Zone2 ≥ 100min = 5 tasks, 20% each
+  // Week % complete: 4 lifts only (25% each). Zone 2 is tracked but not counted.
   int getWeekPercentComplete(int week) {
     final sessions = getSessionsForWeek(week);
     final liftsCompleted = sessions.where((s) => s.isComplete).length.clamp(0, 4);
-    final cycleId = _currentCycle?.id ?? 0;
-    final zone2Mins = getZone2MinutesForWeek(cycleId, week);
-    final zone2Done = zone2Mins >= 100 ? 1 : 0;
-    return (((liftsCompleted + zone2Done) / 5) * 100).clamp(0, 100).round();
+    return ((liftsCompleted / 4) * 100).clamp(0, 100).round();
+  }
+
+  // Persistent rest timer
+  void startRestTimer(String liftName, String? nextSet) {
+    _restTimer?.cancel();
+    _timerActive = true;
+    _timerDuration = _restTimerSeconds;
+    _timerRemaining = _restTimerSeconds;
+    _timerLiftName = liftName;
+    _timerNextSet = nextSet;
+    _timerEndTime = DateTime.now().add(Duration(seconds: _restTimerSeconds));
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimer());
+    notifyListeners();
+  }
+
+  void _tickTimer() {
+    if (!_timerActive || _timerEndTime == null) return;
+    final remaining = _timerEndTime!.difference(DateTime.now()).inSeconds;
+    if (remaining <= 0) {
+      _restTimer?.cancel();
+      _timerActive = false;
+      _timerRemaining = 0;
+      _timerEndTime = null;
+    } else {
+      _timerRemaining = remaining;
+    }
+    notifyListeners();
+  }
+
+  void stopRestTimer() {
+    _restTimer?.cancel();
+    _timerActive = false;
+    _timerEndTime = null;
+    notifyListeners();
+  }
+
+  // When the app resumes from background, recalculate remaining from the
+  // stored end time so the timer shows the real elapsed time, not the
+  // stale value from before the Dart VM was paused.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _timerActive) {
+      _tickTimer();
+    }
+  }
+
+  // Get notes from the most recent completed session that included a given lift.
+  // Falls back to history_entries.notes for pre-migration data.
+  String getLastSessionNotesForLift(LiftType lift) {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final session = _completedSessions
+        .where((s) => s.liftKeys.contains(lift.dbKey) && s.date.compareTo(today) <= 0 && s.notes.isNotEmpty)
+        .firstOrNull;
+    if (session != null) return session.notes;
+    // Pre-migration fallback: check history_entries.notes
+    final past = _historyEntries
+        .where((e) => e.lift == lift.dbKey && !e.isImported && e.date.compareTo(today) <= 0 && e.notes.isNotEmpty)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return past.isEmpty ? '' : past.first.notes;
+  }
+
+  // Fetch set logs for any session (including completed ones from past cycles)
+  Future<List<SetLogModel>> fetchSetLogsForCompletedSession(int sessionId) async {
+    return await _db.getSetLogsForSession(sessionId);
   }
 
   // Reload everything
@@ -617,6 +790,7 @@ class AppProvider extends ChangeNotifier {
     await _loadHistory();
     await _loadLiftWeeks();
     await _loadBodyweightEntries();
+    await _loadJointCaches();
     notifyListeners();
   }
 }

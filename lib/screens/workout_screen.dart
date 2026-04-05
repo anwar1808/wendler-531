@@ -6,6 +6,7 @@ import '../models/lift_type.dart';
 import '../models/history_entry.dart';
 import '../providers/app_provider.dart';
 import '../services/wendler_calculator.dart';
+import '../services/plate_calculator.dart';
 import '../theme/app_theme.dart';
 import '../widgets/rest_timer_widget.dart';
 
@@ -30,7 +31,6 @@ class WorkoutScreen extends StatefulWidget {
 class _WorkoutScreenState extends State<WorkoutScreen> {
   // Track which items are checked off
   final Set<int> _checkedItems = {};
-  bool _restTimerVisible = false;
   bool _initialized = false;
 
   // Step indices
@@ -57,9 +57,59 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
     final tm = provider.getTrainingMax(widget.liftType);
-    final restSeconds = provider.restTimerSeconds;
     final allTimeRecord = _getAllTimePR(provider);
     final lastSessionEntry = _getLastSessionEntry(provider);
+    final lastSessionNotes = provider.getLastSessionNotesForLift(widget.liftType);
+
+    // TM not configured — show setup prompt
+    if (tm <= 0) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: AppTheme.accent,
+          foregroundColor: Colors.black,
+          title: const Text(
+            'Workout',
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 20),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.fitness_center, size: 64, color: AppTheme.accent),
+                const SizedBox(height: 24),
+                Text(
+                  'Set your Training Max for ${widget.liftType.displayName}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Go to Settings to enter your training maxes before starting a session.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+                ),
+                const SizedBox(height: 28),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Go Back'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     // Calculate weights
     final warmupSets = _getWarmupSets(tm);
@@ -95,7 +145,18 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                  child: Card(
+                  child: Column(
+                    children: [
+                      // Joint transition banner (weeks 2–4)
+                      if (widget.week > 1 &&
+                          provider.isLiftCompleteForWeek(widget.liftType, widget.week - 1))
+                        _JointTransitionBanner(
+                          liftType: widget.liftType,
+                          cycleId: widget.cycleId,
+                          fromWeek: widget.week - 1,
+                          provider: provider,
+                        ),
+                      Card(
                     margin: EdgeInsets.zero,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -143,6 +204,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               title:
                                   '${workSets[0].reps} reps at ${WendlerCalculator.formatWeight(workSets[0].weight)}',
                               subtitle: _setSubtitle(widget.week, 1),
+                              plateInfo: PlateCalculator.formatPlates(workSets[0].weight),
                             ),
                             const SizedBox(height: 8),
 
@@ -150,7 +212,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                             _CheckRow(
                               index: _idxRest1,
                               checked: _checkedItems.contains(_idxRest1),
-                              onToggle: () => _toggleRest(_idxRest1, restSeconds),
+                              onToggle: () => _toggleRest(_idxRest1),
                               title: 'Rest',
                               subtitle: 'Press to start rest timer',
                               isRest: true,
@@ -167,6 +229,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               title:
                                   '${workSets[1].reps} reps at ${WendlerCalculator.formatWeight(workSets[1].weight)}',
                               subtitle: _setSubtitle(widget.week, 2),
+                              plateInfo: PlateCalculator.formatPlates(workSets[1].weight),
                             ),
                             const SizedBox(height: 8),
 
@@ -174,7 +237,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                             _CheckRow(
                               index: _idxRest2,
                               checked: _checkedItems.contains(_idxRest2),
-                              onToggle: () => _toggleRest(_idxRest2, restSeconds),
+                              onToggle: () => _toggleRest(_idxRest2),
                               title: 'Rest',
                               subtitle: 'Press to start rest timer',
                               isRest: true,
@@ -191,6 +254,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                               title:
                                   'AMRAP at ${WendlerCalculator.formatWeight(amrapWeight)}',
                               subtitle: _amrapSubtitle(widget.week),
+                              plateInfo: PlateCalculator.formatPlates(amrapWeight),
                               prHint: prHint,
                               beatLastHint: beatLastHint,
                             ),
@@ -222,7 +286,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                           ),
 
                           // Session notes (shown when this workout has been logged)
-                          if (widget.isAlreadyComplete && lastSessionEntry != null && lastSessionEntry.notes.isNotEmpty) ...[
+                          if (widget.isAlreadyComplete && lastSessionNotes.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             Container(
                               width: double.infinity,
@@ -246,7 +310,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    lastSessionEntry.notes,
+                                    lastSessionNotes,
                                     style: const TextStyle(
                                       color: AppTheme.textPrimary,
                                       fontSize: 13,
@@ -261,13 +325,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                       ),
                     ),
                   ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
 
-          // Rest timer overlay
-          if (_restTimerVisible)
+          // Rest timer overlay (driven by provider — persists across navigation)
+          if (provider.timerActive)
             Positioned(
               bottom: 72,
               left: 0,
@@ -275,11 +341,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: Material(
                 color: Colors.transparent,
                 child: RestTimerWidget(
-                  durationSeconds: restSeconds,
-                  liftName: widget.liftType.displayName,
-                  nextSetInfo: null,
-                  onDone: () => setState(() => _restTimerVisible = false),
-                  onSkip: () => setState(() => _restTimerVisible = false),
+                  durationSeconds: provider.timerDuration,
+                  remaining: provider.timerRemaining,
+                  liftName: provider.timerLiftName,
+                  nextSetInfo: provider.timerNextSet,
+                  onDone: provider.stopRestTimer,
+                  onSkip: provider.stopRestTimer,
                 ),
               ),
             ),
@@ -326,14 +393,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     });
   }
 
-  void _toggleRest(int idx, int restSeconds) {
+  void _toggleRest(int idx) {
+    final provider = context.read<AppProvider>();
     setState(() {
       if (_checkedItems.contains(idx)) {
         _checkedItems.remove(idx);
-        _restTimerVisible = false;
+        provider.stopRestTimer();
       } else {
         _checkedItems.add(idx);
-        _restTimerVisible = true;
+        provider.startRestTimer(widget.liftType.displayName, null);
       }
     });
   }
@@ -499,7 +567,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 );
                 final oneRm = WendlerCalculator.calcEpley1RM(amrapWeight, reps);
                 if (ctx.mounted) {
-                  Navigator.pop(ctx); // close dialog
+                  Navigator.pop(ctx); // close score dialog
+                }
+                if (context.mounted) {
+                  await _showJointCheckInDialog(context, provider);
                 }
                 if (context.mounted) {
                   Navigator.of(context).pop(); // return to week screen
@@ -517,6 +588,91 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             child: const Text('Save'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _showJointCheckInDialog(
+      BuildContext context, AppProvider provider) async {
+    int selectedSeverity = 1;
+    const labels = ['None', 'Slight', 'Mild', 'Moderate', 'Painful'];
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppTheme.card,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Joint Check-In',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'How do your joints feel after ${widget.liftType.displayName}?',
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              ...List.generate(5, (i) {
+                final severity = i + 1;
+                final selected = selectedSeverity == severity;
+                return InkWell(
+                  onTap: () => setDialogState(() => selectedSeverity = severity),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Radio<int>(
+                          value: severity,
+                          groupValue: selectedSeverity,
+                          onChanged: (v) =>
+                              setDialogState(() => selectedSeverity = v!),
+                          activeColor: AppTheme.accent,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$severity — ${labels[i]}',
+                          style: TextStyle(
+                            color: selected
+                                ? AppTheme.textPrimary
+                                : AppTheme.textSecondary,
+                            fontSize: 15,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Skip'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await provider.logImmediateJointFeedback(
+                    widget.cycleId, widget.week, widget.liftType, selectedSeverity);
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -549,12 +705,359 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Joint transition banner — persistent until user commits a decision
+// ---------------------------------------------------------------------------
+
+class _JointTransitionBanner extends StatefulWidget {
+  final LiftType liftType;
+  final int cycleId;
+  final int fromWeek;
+  final AppProvider provider;
+
+  const _JointTransitionBanner({
+    required this.liftType,
+    required this.cycleId,
+    required this.fromWeek,
+    required this.provider,
+  });
+
+  @override
+  State<_JointTransitionBanner> createState() => _JointTransitionBannerState();
+}
+
+class _JointTransitionBannerState extends State<_JointTransitionBanner> {
+  late int _severity;
+  bool _committing = false;
+  bool _editing = false;
+
+  static const _labels = ['None', 'Slight', 'Mild', 'Moderate', 'Painful'];
+
+  @override
+  void initState() {
+    super.initState();
+    _severity =
+        widget.provider.getImmediateJointSeverity(
+            widget.cycleId, widget.fromWeek, widget.liftType) ??
+        1;
+  }
+
+  String get _suggestion {
+    if (_severity <= 2) return 'progress';
+    if (_severity == 3) return 'hold';
+    return 'reduce';
+  }
+
+  double _progressedTm(double tm) =>
+      WendlerCalculator.roundToNearest2_5(tm + widget.liftType.tmIncrement);
+  double _reducedTm(double tm) =>
+      WendlerCalculator.roundDownToNearest2_5(tm * 0.95);
+
+  Future<void> _commit(String decision) async {
+    setState(() => _committing = true);
+    await widget.provider.commitWeekTransition(
+        widget.cycleId, widget.fromWeek, widget.liftType, decision, _severity);
+    if (decision == 'hold' && widget.fromWeek != 4 && mounted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.liftType.displayName} will repeat Week ${widget.fromWeek}',
+          ),
+          backgroundColor: AppTheme.teal,
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _committing = false;
+      _editing = false;
+    });
+  }
+
+  static String _decisionLabel(String d) =>
+      d[0].toUpperCase() + d.substring(1);
+
+  static Color _decisionColor(String d) {
+    if (d == 'progress') return AppTheme.success;
+    if (d == 'reduce') return Colors.redAccent;
+    return AppTheme.accent;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final existingDecision = widget.provider
+        .getWeekTransitionDecision(widget.cycleId, widget.fromWeek, widget.liftType);
+    final isCommitted = existingDecision != null && !_editing;
+
+    // Committed (non-editing) state — compact row
+    if (isCommitted) {
+      final tm = widget.provider.getTrainingMax(widget.liftType);
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: _decisionColor(existingDecision).withValues(alpha: 0.4),
+              width: 1.5),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.monitor_heart_outlined,
+                size: 15, color: AppTheme.textSecondary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 13),
+                  children: [
+                    TextSpan(
+                      text: _decisionLabel(existingDecision),
+                      style: TextStyle(
+                        color: _decisionColor(existingDecision),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TextSpan(
+                      text:
+                          ' — TM ${WendlerCalculator.formatWeight(tm)} kg',
+                      style: const TextStyle(color: AppTheme.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _editing = true),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.accent,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(40, 32),
+              ),
+              child: const Text('Edit', style: TextStyle(fontSize: 13)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Full banner — first time or editing
+    final tm = widget.provider.getTrainingMax(widget.liftType);
+    // When editing, base the shown values off the stored tm_before so user
+    // sees what the options will actually produce.
+    final baseTm = _editing
+        ? (widget.provider.getTransitionTmBefore(widget.fromWeek, widget.liftType) ?? tm)
+        : tm;
+    final progressedTm = _progressedTm(baseTm);
+    final reducedTm = _reducedTm(baseTm);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.monitor_heart_outlined,
+                  size: 16, color: AppTheme.accent),
+              const SizedBox(width: 6),
+              Text(
+                _editing
+                    ? 'EDIT DECISION — WEEK ${widget.fromWeek + 1}'
+                    : 'JOINT CHECK-IN — WEEK ${widget.fromWeek + 1}',
+                style: const TextStyle(
+                  color: AppTheme.accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              if (_editing) ...[
+                const Spacer(),
+                TextButton(
+                  onPressed: () => setState(() => _editing = false),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.textSecondary,
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(40, 24),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Current ${widget.liftType.displayName} TM: ${WendlerCalculator.formatWeight(tm)} kg',
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'How did your joints feel after last week?',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            children: List.generate(5, (i) {
+              final sev = i + 1;
+              final selected = _severity == sev;
+              return GestureDetector(
+                onTap: () => setState(() => _severity = sev),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppTheme.accent.withValues(alpha: 0.15)
+                        : Colors.transparent,
+                    border: Border.all(
+                      color: selected ? AppTheme.accent : AppTheme.textSecondary,
+                      width: 1.5,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$sev ${_labels[i]}',
+                    style: TextStyle(
+                      color: selected ? AppTheme.accent : AppTheme.textSecondary,
+                      fontSize: 12,
+                      fontWeight:
+                          selected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _DecisionButton(
+                label: 'Progress',
+                subLabel: '→ ${WendlerCalculator.formatWeight(progressedTm)} kg',
+                isSuggested: _suggestion == 'progress',
+                isDisabled: _committing,
+                color: AppTheme.success,
+                onTap: () => _commit('progress'),
+              ),
+              const SizedBox(width: 6),
+              _DecisionButton(
+                label: 'Hold',
+                subLabel: '${WendlerCalculator.formatWeight(baseTm)} kg',
+                isSuggested: _suggestion == 'hold',
+                isDisabled: _committing,
+                color: AppTheme.accent,
+                onTap: () => _commit('hold'),
+              ),
+              const SizedBox(width: 6),
+              _DecisionButton(
+                label: 'Reduce',
+                subLabel: '→ ${WendlerCalculator.formatWeight(reducedTm)} kg',
+                isSuggested: _suggestion == 'reduce',
+                isDisabled: _committing,
+                color: Colors.redAccent,
+                onTap: () => _commit('reduce'),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Suggested: ${_decisionLabel(_suggestion)}',
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DecisionButton extends StatelessWidget {
+  final String label;
+  final String subLabel;
+  final bool isSuggested;
+  final bool isDisabled;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _DecisionButton({
+    required this.label,
+    required this.subLabel,
+    required this.isSuggested,
+    required this.isDisabled,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: isDisabled ? null : onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSuggested ? color.withValues(alpha: 0.15) : Colors.transparent,
+            border: Border.all(
+              color: isSuggested ? color : AppTheme.textSecondary.withValues(alpha: 0.4),
+              width: isSuggested ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSuggested ? color : AppTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: isSuggested ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subLabel,
+                style: TextStyle(
+                  color: isSuggested
+                      ? color.withValues(alpha: 0.8)
+                      : AppTheme.textSecondary.withValues(alpha: 0.6),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CheckRow extends StatelessWidget {
   final int index;
   final bool checked;
   final VoidCallback onToggle;
   final String title;
   final String subtitle;
+  final String? plateInfo;
   final String? prHint;
   final String? beatLastHint;
   final bool isRest;
@@ -565,6 +1068,7 @@ class _CheckRow extends StatelessWidget {
     required this.onToggle,
     required this.title,
     required this.subtitle,
+    this.plateInfo,
     this.prHint,
     this.beatLastHint,
     this.isRest = false,
@@ -613,6 +1117,16 @@ class _CheckRow extends StatelessWidget {
                       fontSize: 12,
                     ),
                   ),
+                  if (plateInfo != null && plateInfo!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      plateInfo!,
+                      style: const TextStyle(
+                        color: AppTheme.teal,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                   if (prHint != null) ...[
                     const SizedBox(height: 4),
                     Text(
